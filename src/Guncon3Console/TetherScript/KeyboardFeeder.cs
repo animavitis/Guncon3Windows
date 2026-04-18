@@ -1,26 +1,30 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Runtime.InteropServices;
-using GunconUSB; // <-- GunButton, GunState
+using GunconUSB;
 
 namespace Guncon3Console.TetherScript
 {
-    static class KeyboardFeeder
+    class KeyboardFeeder
     {
-        private static readonly HIDController HID = new HIDController();
+        private readonly HIDController HID = new HIDController();
+        private readonly GunState _state;
 
-        private static readonly uint FTimeout = 5000;
+        private readonly uint FTimeout = 5000;
 
-        // Mapeo lógico -> keycode (los números del "keys")
-        public static readonly Dictionary<GunButton, byte> Mapping = new Dictionary<GunButton, byte>();
+        public readonly Dictionary<GunButton, byte> Mapping = new Dictionary<GunButton, byte>();
 
-        // Último estado enviado
-        private static readonly byte[] _lastKeys = new byte[6];
-        private static bool _lastHadAny = false;
-        private static long _lastSendTicks = 0;
-        private static readonly long _minSendIntervalTicks = TimeSpan.FromMilliseconds(2).Ticks; // ~500 Hz máx
+        private readonly byte[] _lastKeys = new byte[6];
+        private bool _lastHadAny = false;
+        private long _lastSendTicks = 0;
+        private readonly long _minSendIntervalTicks = TimeSpan.FromMilliseconds(2).Ticks;
 
-        public static void Connect()
+        public KeyboardFeeder(GunState state)
+        {
+            _state = state ?? throw new ArgumentNullException(nameof(state));
+        }
+
+        public void Connect()
         {
             HID.OnLog += Log;
             HID.VendorID = (ushort)DriversConst.TTC_VENDORID;
@@ -34,11 +38,10 @@ namespace Guncon3Console.TetherScript
             _lastSendTicks = 0;
         }
 
-        public static void Disconnect()
+        public void Disconnect()
         {
             try
             {
-                // Suelta por seguridad
                 Send(0, 0, 0, 0, 0, 0, 0, 0);
             }
             catch { }
@@ -46,9 +49,9 @@ namespace Guncon3Console.TetherScript
             HID.OnLog -= Log;
         }
 
-        private static void Log(object s, LogArgs e) => Console.WriteLine("Keyboard " + e.Msg);
+        private void Log(object s, LogArgs e) => Console.WriteLine("Keyboard " + e.Msg);
 
-        public static void Send(byte Modifier, byte Padding, byte Key0, byte Key1, byte Key2, byte Key3, byte Key4, byte Key5)
+        public void Send(byte Modifier, byte Padding, byte Key0, byte Key1, byte Key2, byte Key3, byte Key4, byte Key5)
         {
             SetFeatureKeyboard data = new SetFeatureKeyboard
             {
@@ -69,7 +72,7 @@ namespace Guncon3Console.TetherScript
             HID.SendData(buf, (uint)buf.Length);
         }
 
-        public static void Ping()
+        public void Ping()
         {
             SetFeatureKeyboard data = new SetFeatureKeyboard
             {
@@ -94,15 +97,12 @@ namespace Guncon3Console.TetherScript
             return arr;
         }
 
-        // Mantener teclas: sin “metralleta”
-        internal static void Feed()
+        internal void Feed()
         {
-            // Mantén vivo el driver
             Ping();
 
             if (Mapping.Count == 0) return;
 
-            // Construye el set actual
             byte[] current = new byte[6];
             int idx = 0;
 
@@ -111,7 +111,7 @@ namespace Guncon3Console.TetherScript
                 if (idx >= 6) break;
 
                 bool pressed = false;
-                try { pressed = GunState.BtnState.TryGetValue(kv.Key, out var v) && v; } catch { }
+                try { pressed = _state.BtnState.TryGetValue(kv.Key, out var v) && v; } catch { }
 
                 if (pressed)
                 {
@@ -125,7 +125,6 @@ namespace Guncon3Console.TetherScript
                 }
             }
 
-            // Ordena para comparación estable
             for (int i = 0; i < idx - 1; i++)
                 for (int j = i + 1; j < idx; j++)
                     if (current[j] < current[i]) { byte t = current[i]; current[i] = current[j]; current[j] = t; }

@@ -5,12 +5,15 @@ using System.Linq;
 
 namespace GunconUSB
 {
-    public static class GunconReader
+    public class GunconReader
     {
         private const int pid = 2048;   // 0x0800
         private const int vid = 2970;   // 0x0B9A (Namco)
-        private static USBDevice device = null;
+        private USBDevice device = null;
         private static readonly Guid deviceguid = new Guid("{A5DCBF10-6530-11D2-901F-00C04FB951ED}");
+
+        // Each reader has its own state
+        public GunState State { get; } = new GunState();
 
         // Clave
         private static readonly byte[] key = new byte[] { 0x01, 0x12, 0x6f, 0x32, 0x24, 0x60, 0x17, 0x21 };
@@ -37,23 +40,44 @@ namespace GunconUSB
             0xA5, 0xBB, 0x21, 0xC8
         };
 
-        public static void Connect()
+        /// <summary>
+        /// Returns all Guncon3 USB device infos found on the system.
+        /// </summary>
+        public static List<USBDeviceInfo> FindAllDevices()
         {
-            var devInfo = USBDevice.GetDevices(deviceguid)
-                                   .FirstOrDefault(x => x.PID == pid && x.VID == vid);
-            if (devInfo == null)
-                throw new Exception("Guncon3 device not found");
+            return USBDevice.GetDevices(deviceguid)
+                            .Where(x => x.PID == pid && x.VID == vid)
+                            .ToList();
+        }
 
+        /// <summary>
+        /// Connect to a specific USB device info.
+        /// </summary>
+        public void Connect(USBDeviceInfo devInfo)
+        {
+            if (devInfo == null)
+                throw new ArgumentNullException(nameof(devInfo));
             device = new USBDevice(devInfo);
         }
 
-        public static void Disconnect()
+        /// <summary>
+        /// Connect to the first (or only) Guncon3 found.
+        /// </summary>
+        public void Connect()
+        {
+            var devInfo = FindAllDevices().FirstOrDefault();
+            if (devInfo == null)
+                throw new Exception("Guncon3 device not found");
+            Connect(devInfo);
+        }
+
+        public void Disconnect()
         {
             try { device?.Dispose(); }
             finally { device = null; }
         }
 
-        public static void Read()
+        public void Read()
         {
             if (device == null) throw new InvalidOperationException("GunconReader not connected.");
 
@@ -69,47 +93,42 @@ namespace GunconUSB
                 throw new Exception("Guncon decode error");
 
             // Botones principales → Diccionario
-            GunState.BtnState[GunButton.Trigger] = (decoded[11] & 0x20) != 0;
-            GunState.BtnState[GunButton.A1] = (decoded[12] & 0x04) != 0;
-            GunState.BtnState[GunButton.A2] = (decoded[12] & 0x02) != 0;
-            GunState.BtnState[GunButton.B1] = (decoded[11] & 0x04) != 0;
-            GunState.BtnState[GunButton.B2] = (decoded[11] & 0x02) != 0;
-            GunState.BtnState[GunButton.C1] = (decoded[11] & 0x80) != 0;
-            GunState.BtnState[GunButton.C2] = (decoded[12] & 0x08) != 0;
-            GunState.BtnState[GunButton.AClick] = (decoded[10] & 0x80) != 0;
-            GunState.BtnState[GunButton.BClick] = (decoded[10] & 0x40) != 0;
+            State.BtnState[GunButton.Trigger] = (decoded[11] & 0x20) != 0;
+            State.BtnState[GunButton.A1] = (decoded[12] & 0x04) != 0;
+            State.BtnState[GunButton.A2] = (decoded[12] & 0x02) != 0;
+            State.BtnState[GunButton.B1] = (decoded[11] & 0x04) != 0;
+            State.BtnState[GunButton.B2] = (decoded[11] & 0x02) != 0;
+            State.BtnState[GunButton.C1] = (decoded[11] & 0x80) != 0;
+            State.BtnState[GunButton.C2] = (decoded[12] & 0x08) != 0;
+            State.BtnState[GunButton.AClick] = (decoded[10] & 0x80) != 0;
+            State.BtnState[GunButton.BClick] = (decoded[10] & 0x40) != 0;
 
             // Ejes/indicadores
-            GunState.ABS_RY = decoded[0];
-            GunState.ABS_RX = decoded[1];
-            GunState.ABS_HAT0Y = decoded[2];
-            GunState.ABS_HAT0X = decoded[3];
-            GunState.Z = (short)(decoded[4] * 256 + decoded[5]);
-            GunState.ABS_Y = (short)(decoded[6] * 256 + decoded[7]);
-            GunState.ABS_X = (short)(decoded[8] * 256 + decoded[9]);
-            GunState.INDICATOR1 = (decoded[11] & 0x10) != 0;
-            GunState.INDICATOR2 = (decoded[11] & 0x08) != 0;
+            State.ABS_RY = decoded[0];
+            State.ABS_RX = decoded[1];
+            State.ABS_HAT0Y = decoded[2];
+            State.ABS_HAT0X = decoded[3];
+            State.Z = (short)(decoded[4] * 256 + decoded[5]);
+            State.ABS_Y = (short)(decoded[6] * 256 + decoded[7]);
+            State.ABS_X = (short)(decoded[8] * 256 + decoded[9]);
+            State.INDICATOR1 = (decoded[11] & 0x10) != 0;
+            State.INDICATOR2 = (decoded[11] & 0x08) != 0;
             // Digitalize left analog (LUp/LDown/LLeft/LRight)
             // ABS_HAT0X / ABS_HAT0Y are 0..255 with center ~128.
             const int DEAD = 20; // deadzone in raw units (~8%)
-            int lx = (int)GunState.ABS_HAT0X;
-            int ly = (int)GunState.ABS_HAT0Y;
+            int lx = (int)State.ABS_HAT0X;
+            int ly = (int)State.ABS_HAT0Y;
 
-            bool lleft  = lx < (128 - DEAD);
-            bool lright = lx > (128 + DEAD);
-            bool lup    = ly < (128 - DEAD);
-            bool ldown  = ly > (128 + DEAD);
-
-            GunState.BtnState[GunButton.LLeft]  = lleft;
-            GunState.BtnState[GunButton.LRight] = lright;
-            GunState.BtnState[GunButton.LUp]    = lup;
-            GunState.BtnState[GunButton.LDown]  = ldown;
+            State.BtnState[GunButton.LLeft]  = lx < (128 - DEAD);
+            State.BtnState[GunButton.LRight] = lx > (128 + DEAD);
+            State.BtnState[GunButton.LUp]    = ly < (128 - DEAD);
+            State.BtnState[GunButton.LDown]  = ly > (128 + DEAD);
 
 
             // Compatibilidad con el calibrador del EXE
-            GunState.RAW_X = GunState.ABS_X;
-            GunState.RAW_Y = GunState.ABS_Y;
-            GunState.BTN_TRIGGER = GunState.BtnState[GunButton.Trigger];
+            State.RAW_X = State.ABS_X;
+            State.RAW_Y = State.ABS_Y;
+            State.BTN_TRIGGER = State.BtnState[GunButton.Trigger];
         }
 
         private static List<byte> Decode(byte[] data2)

@@ -3,41 +3,43 @@ using System.Collections.Generic;
 using System.Runtime.InteropServices;
 using GunconUSB;
 
-// OJO: usamos SIEMPRE el enum del proyecto GunconUSB (singular)
-
-
 namespace Guncon3Console.TetherScript
 {
-    static class AbsMouseFeeder
+    class AbsMouseFeeder
     {
-        private static readonly HIDController HID = new HIDController();
+        private readonly HIDController HID = new HIDController();
+        private readonly GunState _state;
 
-        // Mapa: botón lógico de la gun (del enum público en GunconUSB) -> botón de ratón virtual de TetherScript
-        public static readonly Dictionary<GunButton, MouseButton> Mapping = new Dictionary<GunButton, MouseButton>();
+        public readonly Dictionary<GunButton, MouseButton> Mapping = new Dictionary<GunButton, MouseButton>();
 
-        public static bool Force4by3 = false;
-        private static byte btns = 0;
+        public bool Force4by3 = false;
+        private byte btns = 0;
 
-        public static void Connect()
+        public AbsMouseFeeder(GunState state)
+        {
+            _state = state ?? throw new ArgumentNullException(nameof(state));
+        }
+
+        public void Connect()
         {
             HID.OnLog += Log;
-            HID.VendorID = (ushort)DriversConst.TTC_VENDORID;            // VendorId TetherScript
-            HID.ProductID = (ushort)DriversConst.TTC_PRODUCTID_MOUSEABS;  // ProductId Mouse Abs
+            HID.VendorID = (ushort)DriversConst.TTC_VENDORID;
+            HID.ProductID = (ushort)DriversConst.TTC_PRODUCTID_MOUSEABS;
             HID.Connect();
 
             if (!HID.Connected)
-                throw new Exception("Coud not connect to TetherScript's AbsMouse");
+                throw new Exception("Could not connect to TetherScript's AbsMouse");
         }
 
-        public static void Disconnect()
+        public void Disconnect()
         {
             HID.Disconnect();
             HID.OnLog -= Log;
         }
 
-        private static void Log(object s, LogArgs e) => Console.WriteLine("Mouse " + e.Msg);
+        private void Log(object s, LogArgs e) => Console.WriteLine("Mouse " + e.Msg);
 
-        public static void Send_Data_To_MouseAbs(ushort x, ushort y)
+        public void Send_Data_To_MouseAbs(ushort x, ushort y)
         {
             var data = new SetFeatureMouseAbs
             {
@@ -68,26 +70,24 @@ namespace Guncon3Console.TetherScript
             return arr;
         }
 
-        internal static void Feed()
+        internal void Feed()
         {
             short absX = 0;
             short absY = 0;
 
-            if (GunState.IsInsideScreen)
+            if (_state.IsInsideScreen)
             {
-                absX = GunState.ABS_X;
-                absY = GunState.ABS_Y;
+                absX = _state.ABS_X;
+                absY = _state.ABS_Y;
 
-                // 4:3 dentro de 16:9 (MAME)
                 if (Force4by3)
                     absX = (short)Helper.ConvertRange(4096, 28671, 0, 32767, absX);
             }
 
-            // botones
             btns = 0;
             foreach (var map in Mapping)
             {
-                if (!GunState.BtnState.TryGetValue(map.Key, out bool pressed) || !pressed)
+                if (!_state.BtnState.TryGetValue(map.Key, out bool pressed) || !pressed)
                     continue;
 
                 if (map.Value == MouseButton.Left) btns = (byte)(btns | 1);

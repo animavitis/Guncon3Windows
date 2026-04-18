@@ -47,10 +47,13 @@ namespace Guncon3Console
         }
 
         /// <summary>Guarda en calibration_rect.txt (junto al EXE por defecto).</summary>
-        public void Save(string path = null)
+        public void Save(string path = null, int gunIndex = 0)
         {
             if (path == null)
-                path = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "calibration_rect.txt");
+            {
+                string suffix = gunIndex > 0 ? $"_{gunIndex + 1}" : "";
+                path = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, $"calibration_rect{suffix}.txt");
+            }
 
             using var sw = new StreamWriter(path, false);
             var ci = CultureInfo.InvariantCulture;
@@ -65,10 +68,13 @@ namespace Guncon3Console
         }
 
         /// <summary>Carga desde calibration_rect.txt. Devuelve null si no existe o está mal.</summary>
-        public static RectCalib Load(string path = null)
+        public static RectCalib Load(string path = null, int gunIndex = 0)
         {
             if (path == null)
-                path = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "calibration_rect.txt");
+            {
+                string suffix = gunIndex > 0 ? $"_{gunIndex + 1}" : "";
+                path = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, $"calibration_rect{suffix}.txt");
+            }
 
             if (!File.Exists(path))
                 return null;

@@ -19,8 +19,14 @@ namespace Guncon3Console
         private bool _checking = false;
         private RectCalib _rectForCheck = null;
 
-        public CalibrationWindow()
+        private readonly GunconReader _reader;
+        private readonly int _gunIndex;
+
+        public CalibrationWindow(GunconReader reader, int gunIndex = 0)
         {
+            _reader = reader ?? throw new ArgumentNullException(nameof(reader));
+            _gunIndex = gunIndex;
+
             FormBorderStyle = FormBorderStyle.None;
             WindowState = FormWindowState.Maximized;
             Bounds = Screen.PrimaryScreen.Bounds;
@@ -41,8 +47,6 @@ namespace Guncon3Console
 
             RebuildTargets();
             Resize += (_, __) => { RebuildTargets(); Invalidate(); };
-
-            try { GunconReader.Connect(); } catch { }
 
             _poll = new WinFormsTimer { Interval = 16 };
             _poll.Tick += PollTick;
@@ -65,12 +69,12 @@ namespace Guncon3Console
 
         private void CapturePointSafe()
         {
-            try { GunconReader.Read(); } catch { }
+            try { _reader.Read(); } catch { }
 
             try
             {
-                double rawX = GunState.ABS_X;
-                double rawY = GunState.ABS_Y;
+                double rawX = _reader.State.ABS_X;
+                double rawY = _reader.State.ABS_Y;
                 CapturePoint(rawX, rawY);
             }
             catch (Exception ex) { DumpError("cal_capture_error.txt", ex); }
@@ -78,12 +82,12 @@ namespace Guncon3Console
 
         private void PollTick(object sender, EventArgs e)
         {
-            try { GunconReader.Read(); } catch { }
+            try { _reader.Read(); } catch { }
 
             if (_checking)
             {
-                bool a1 = GunState.BtnState.TryGetValue(GunButton.A1, out var v1) && v1;
-                bool c2 = GunState.BtnState.TryGetValue(GunButton.C2, out var v2) && v2;
+                bool a1 = _reader.State.BtnState.TryGetValue(GunButton.A1, out var v1) && v1;
+                bool c2 = _reader.State.BtnState.TryGetValue(GunButton.C2, out var v2) && v2;
 
                 if (!_prevA1 && a1)
                 {
@@ -104,10 +108,10 @@ namespace Guncon3Console
             }
             else
             {
-                bool t = GunState.BtnState.TryGetValue(GunButton.Trigger, out var trig) && trig;
+                bool t = _reader.State.BtnState.TryGetValue(GunButton.Trigger, out var trig) && trig;
                 if (!_prevTrig && t)
                 {
-                    CapturePoint(GunState.ABS_X, GunState.ABS_Y);
+                    CapturePoint(_reader.State.ABS_X, _reader.State.ABS_Y);
                 }
                 _prevTrig = t;
             }
@@ -170,7 +174,7 @@ namespace Guncon3Console
                     InvertY = true
                 };
 
-                rc.Save();
+                rc.Save(gunIndex: _gunIndex);
 
                 _rectForCheck = rc;
                 _checking = true;
@@ -193,17 +197,19 @@ namespace Guncon3Console
             using var f = new Font(FontFamily.GenericSansSerif, 18f, FontStyle.Bold);
             using var b = new SolidBrush(Color.White);
 
+            string gunLabel = _gunIndex > 0 ? $" [Gun {_gunIndex + 1}]" : " [Gun 1]";
+
             if (!_checking)
             {
-                g.DrawString("SHOOT THE MARK (5 POINTS). ESC = cancel / Space = capture", f, b, new PointF(20, 20));
+                g.DrawString($"SHOOT THE MARK (5 POINTS){gunLabel}. ESC = cancel / Space = capture", f, b, new PointF(20, 20));
                 g.DrawString("Progress: " + Math.Min(_idx + 1, 5) + "/5", f, b, new PointF(20, 46));
 
                 string rawLine = "RAW: X=0 Y=0 TRIG=off";
                 try
                 {
-                    double px = GunState.ABS_X;
-                    double py = GunState.ABS_Y;
-                    string trig = (GunState.BtnState.TryGetValue(GunButton.Trigger, out var t) && t) ? "ON" : "off";
+                    double px = _reader.State.ABS_X;
+                    double py = _reader.State.ABS_Y;
+                    string trig = (_reader.State.BtnState.TryGetValue(GunButton.Trigger, out var t) && t) ? "ON" : "off";
                     rawLine = $"RAW: X={px} Y={py} TRIG={trig}";
                 }
                 catch { }
@@ -215,10 +221,10 @@ namespace Guncon3Console
             }
             else
             {
-                g.DrawString("CHECK CALIBRATION — A1 = recalibrate | C2 = save & exit", f, b, new PointF(20, 20));
+                g.DrawString($"CHECK CALIBRATION{gunLabel} — A1 = recalibrate | C2 = save & exit", f, b, new PointF(20, 20));
 
-                double rx = GunState.ABS_X;
-                double ry = GunState.ABS_Y;
+                double rx = _reader.State.ABS_X;
+                double ry = _reader.State.ABS_Y;
                 var (px, py) = _rectForCheck.Map(rx, ry);
 
                 DrawCrosshair(g, (float)px, (float)py);
@@ -233,13 +239,13 @@ namespace Guncon3Console
             float tri = Math.Min(client.Width, client.Height) * 0.05f;
             if (k <= 3)
             {
-                PointF a, b, c;
-                if (k == 0) { a = new(p.X, p.Y); b = new(p.X + tri, p.Y); c = new(p.X, p.Y + tri); }
-                else if (k == 1) { a = new(p.X, p.Y); b = new(p.X - tri, p.Y); c = new(p.X, p.Y + tri); }
-                else if (k == 2) { a = new(p.X, p.Y); b = new(p.X - tri, p.Y); c = new(p.X, p.Y - tri); }
-                else { a = new(p.X, p.Y); b = new(p.X + tri, p.Y); c = new(p.X, p.Y - tri); }
-                g.FillPolygon(red, new[] { a, b, c });
-                g.DrawPolygon(penW, new[] { a, b, c });
+                PointF a, b2, c;
+                if (k == 0) { a = new(p.X, p.Y); b2 = new(p.X + tri, p.Y); c = new(p.X, p.Y + tri); }
+                else if (k == 1) { a = new(p.X, p.Y); b2 = new(p.X - tri, p.Y); c = new(p.X, p.Y + tri); }
+                else if (k == 2) { a = new(p.X, p.Y); b2 = new(p.X - tri, p.Y); c = new(p.X, p.Y - tri); }
+                else { a = new(p.X, p.Y); b2 = new(p.X + tri, p.Y); c = new(p.X, p.Y - tri); }
+                g.FillPolygon(red, new[] { a, b2, c });
+                g.DrawPolygon(penW, new[] { a, b2, c });
             }
             else
             {
