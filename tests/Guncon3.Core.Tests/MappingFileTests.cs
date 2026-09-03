@@ -155,6 +155,20 @@ namespace Guncon3.Core.Tests
         }
 
         [Fact]
+        public void Parse_AcceptsTheRightStickGunCommandsWithNoParserChange()
+        {
+            var m = MappingFile.Parse(new[]
+            {
+                "KEYBOARD.30 = RUp",
+                "MOUSE.Right = RLeft"
+            });
+
+            Assert.Equal((byte)30, m.Keyboard[GunButton.RUp]);
+            Assert.Equal(MouseButton.Right, m.Mouse[GunButton.RLeft]);
+            Assert.Empty(m.Diagnostics);
+        }
+
+        [Fact]
         public void Parse_ExposesEntriesAsSpans()
         {
             var m = MappingFile.Parse(new[] { "MOUSE.Left = Trigger", "KEYBOARD.30 = C1", "KEYBOARD.31 = C2" });
@@ -163,6 +177,18 @@ namespace Guncon3.Core.Tests
             Assert.Equal(2, m.KeyboardPairs.Length);
             Assert.Equal(m.Mouse.Count, m.MousePairs.Length);
             Assert.Equal(m.Keyboard.Count, m.KeyboardPairs.Length);
+
+            foreach (var pair in m.MousePairs)
+            {
+                Assert.True(m.Mouse.TryGetValue(pair.Key, out var value));
+                Assert.Equal(value, pair.Value);
+            }
+
+            foreach (var pair in m.KeyboardPairs)
+            {
+                Assert.True(m.Keyboard.TryGetValue(pair.Key, out var value));
+                Assert.Equal(value, pair.Value);
+            }
         }
     }
 }

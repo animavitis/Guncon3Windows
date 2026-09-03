@@ -20,6 +20,7 @@ namespace Guncon3Console
         public GunState State => Reader.State;
         public AbsMouseFeeder MouseFeeder { get; }
         public KeyboardFeeder KbFeeder { get; }
+        public JoystickFeeder JoyFeeder { get; }
 
         private GunSnapshot _snapshot = GunSnapshot.Empty;
 
@@ -35,11 +36,16 @@ namespace Guncon3Console
             Reader = reader;
             MouseFeeder = new AbsMouseFeeder(reader.State);
             KbFeeder = new KeyboardFeeder(reader.State);
+            JoyFeeder = new JoystickFeeder(reader.State);
         }
     }
 
     internal static class Program
     {
+        // Built once at startup and never mutated afterwards: the workers list is
+        // indexed in parallel with this one, so removing or reordering an entry would
+        // silently mispair guns and workers. A disconnected gun stays here; its worker
+        // tracks the connection state.
         private static readonly List<GunInstance> _guns = new List<GunInstance>();
         private static volatile bool _running = true;
 
@@ -65,7 +71,7 @@ namespace Guncon3Console
                 return;
             }
 
-            Application.SetHighDpiMode(HighDpiMode.DpiUnaware);
+            Application.SetHighDpiMode(HighDpiMode.PerMonitorV2);
             Application.EnableVisualStyles();
             Application.SetCompatibleTextRenderingDefault(false);
 
@@ -99,6 +105,16 @@ namespace Guncon3Console
                     reader.Connect(devices[i]);
                     _guns.Add(new GunInstance(i, reader));
                     ConsoleLog.Line($"Gun {i + 1} connected.");
+
+                    var centres = StickCentres.Load(gunIndex: i);
+                    if (centres != null)
+                    {
+                        reader.Centres = centres;
+                        ConsoleLog.Line($"Gun {i + 1} stick centres loaded.");
+                    }
+
+                    if (!reader.PipeTimeoutApplied)
+                        ConsoleLog.Warn($"Gun {i + 1} refused the USB transfer timeout; a wedged device can block indefinitely.");
                 }
                 catch (Exception ex)
                 {
@@ -148,7 +164,7 @@ namespace Guncon3Console
             foreach (var gun in _guns)
             {
                 var worker = new GunWorker(
-                    gun.Index, gun.Reader, gun.MouseFeeder, gun.KbFeeder,
+                    gun.Index, gun.Reader, gun.MouseFeeder, gun.KbFeeder, gun.JoyFeeder,
                     () => gun.Snapshot,
                     () => _guns.Where(g => g != gun && g.Reader.DevicePath != null)
                                .Select(g => g.Reader.DevicePath)
@@ -187,6 +203,7 @@ namespace Guncon3Console
 
                 try { gun.MouseFeeder.Disconnect(); } catch { }
                 try { gun.KbFeeder.Disconnect(); } catch { }
+                try { gun.JoyFeeder.Disconnect(); } catch { }
                 try { gun.Reader.Disconnect(); } catch { }
 
                 workers[i].Dispose();
@@ -282,6 +299,17 @@ namespace Guncon3Console
             catch (Exception ex)
             {
                 ConsoleLog.Line($"[Gun {gun.Index + 1} KeyboardFeeder] Connect fail:\n" + ex);
+            }
+
+            try
+            {
+                ConsoleLog.Line($"[Gun {gun.Index + 1}] Joystick Connecting...");
+                gun.JoyFeeder.Connect();
+                ConsoleLog.Line($"[Gun {gun.Index + 1}] Joystick Connected (TetherScript).");
+            }
+            catch (Exception ex)
+            {
+                ConsoleLog.Line($"[Gun {gun.Index + 1} JoystickFeeder] Connect fail:\n" + ex);
             }
         }
 

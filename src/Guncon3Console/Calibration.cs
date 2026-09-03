@@ -25,8 +25,8 @@ namespace Guncon3Console
         /// </summary>
         public static void Do_Calibration(ref short x, ref short y)
         {
-            // The effective calibration is now done with RectCalib.Map in Program.cs
-            // Left empty for compatibility.
+            // The effective calibration is now done with RectCalib.MapNormalized in
+            // GunWorker. Left empty for compatibility.
         }
     }
 }

@@ -22,7 +22,9 @@
     <Compile Include="Properties\AssemblyInfo.cs" />
     <Compile Include="TetherScript\AbsMouseFeeder.cs" />
     <Compile Include="TetherScript\Enumerators.cs" />
+    <Compile Include="TetherScript\FeederHealth.cs" />
     <Compile Include="TetherScript\HIDController.cs" />
+    <Compile Include="TetherScript\JoystickFeeder.cs" />
     <Compile Include="TetherScript\KeyboardFeeder.cs" />
   </ItemGroup>
 

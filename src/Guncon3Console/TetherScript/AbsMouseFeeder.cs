@@ -16,31 +16,10 @@ namespace Guncon3Console.TetherScript
         private static readonly int ReportSize = HidReport.SizeOf<SetFeatureMouseAbs>();
         private readonly byte[] _reportBuffer = new byte[ReportSize + 1];
 
-        private const int FailuresBeforeUnhealthy = 10;
-        private int _consecutiveFailures;
+        private readonly FeederHealth _health = new FeederHealth("Mouse");
 
         /// <summary>False once the virtual device has rejected several reports in a row.</summary>
-        public bool Healthy { get; private set; } = true;
-
-        private void Track(bool sent)
-        {
-            if (sent)
-            {
-                if (!Healthy)
-                {
-                    Healthy = true;
-                    ConsoleLog.Line("Mouse feeder recovered.");
-                }
-                _consecutiveFailures = 0;
-                return;
-            }
-
-            if (++_consecutiveFailures < FailuresBeforeUnhealthy || !Healthy)
-                return;
-
-            Healthy = false;
-            ConsoleLog.Warn($"Mouse feeder stopped accepting reports after {_consecutiveFailures} failures.");
-        }
+        public bool Healthy => _health.Healthy;
 
         private static readonly long RefreshIntervalTicks = Stopwatch.Frequency;   // 1000 ms
         private long _lastSendTimestamp;
@@ -69,6 +48,11 @@ namespace Guncon3Console.TetherScript
 
         public void Disconnect()
         {
+            // The mouse report has no Timeout field, so nothing clears a held button
+            // if we close without releasing it.
+            try { btns = 0; Send_Data_To_MouseAbs(_lastX, _lastY); }
+            catch { }
+
             HID.Disconnect();
             HID.OnLog -= Log;
         }
@@ -87,7 +71,7 @@ namespace Guncon3Console.TetherScript
             };
 
             HidReport.Write(in data, _reportBuffer);
-            Track(HID.SendData(_reportBuffer, (uint)ReportSize));
+            _health.Track(HID.SendData(_reportBuffer, (uint)ReportSize));
         }
 
         internal void Feed(GunMapping mapping)

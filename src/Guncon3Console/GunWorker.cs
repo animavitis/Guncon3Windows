@@ -17,6 +17,28 @@ namespace Guncon3Console
     {
         private static readonly int[] BackoffMs = { 250, 500, 1000, 2000 };
 
+        // One transient pipe error is not a disconnect. Require a few in a row before
+        // tearing the device down, so an occasional stall no longer costs a full
+        // release-and-reconnect cycle.
+        private const int DisconnectsBeforeTeardown = 3;
+
+        private int _consecutiveDisconnects;
+
+        /// <summary>
+        /// How long a gun may produce no usable frame before it is treated as
+        /// disconnected. Covers both a wedged device timing out on every transfer and
+        /// a sustained checksum-failure storm: in either case the gun is producing
+        /// nothing, and re-enumerating it is the only recovery available. Must stay
+        /// well above <c>GunconReader.PipeTimeoutMs</c> — by a factor of ten or
+        /// better — or raising that per-transfer timeout silently turns this window
+        /// into a one-timeout hair trigger.
+        /// </summary>
+        private static readonly long NoDataBeforeTeardownTicks = Stopwatch.Frequency * 2;
+
+        private static readonly double NoDataBeforeTeardownSeconds = NoDataBeforeTeardownTicks / (double)Stopwatch.Frequency;
+
+        private long _lastGoodReadTimestamp;
+
         // Reconnect must be serialized across all workers: the claimed-path set is a
         // snapshot, and WinUSB opens are shared rather than exclusive, so two workers
         // evaluating it concurrently can both pick the same free device and then
@@ -27,6 +49,7 @@ namespace Guncon3Console
         private readonly GunconReader _reader;
         private readonly AbsMouseFeeder _mouse;
         private readonly KeyboardFeeder _keyboard;
+        private readonly JoystickFeeder _joystick;
         private readonly Func<GunSnapshot> _snapshot;
         private readonly Func<IReadOnlyCollection<string>> _claimedPaths;
 
@@ -40,12 +63,13 @@ namespace Guncon3Console
 
         private Thread _thread;
 
-        public GunWorker(int index, GunconReader reader, AbsMouseFeeder mouse, KeyboardFeeder keyboard, Func<GunSnapshot> snapshot, Func<IReadOnlyCollection<string>> claimedPaths)
+        public GunWorker(int index, GunconReader reader, AbsMouseFeeder mouse, KeyboardFeeder keyboard, JoystickFeeder joystick, Func<GunSnapshot> snapshot, Func<IReadOnlyCollection<string>> claimedPaths)
         {
             _index = index;
             _reader = reader;
             _mouse = mouse;
             _keyboard = keyboard;
+            _joystick = joystick;
             _snapshot = snapshot;
             _claimedPaths = claimedPaths;
         }
@@ -120,6 +144,7 @@ namespace Guncon3Console
         private void Run()
         {
             var token = _cts.Token;
+            _lastGoodReadTimestamp = Stopwatch.GetTimestamp();
 
             while (!token.IsCancellationRequested)
             {
@@ -137,6 +162,13 @@ namespace Guncon3Console
 
                             _paused = false;
                             Monitor.PulseAll(_pauseGate);
+
+                            // The pipe sat idle through the whole pause — possibly tens of
+                            // seconds of a calibration modal — so the clock must restart
+                            // here, before control reaches Read(). Otherwise the very next
+                            // non-Ok read finds an ancient timestamp and fires the no-data
+                            // teardown over a gun that was answering normally moments ago.
+                            _lastGoodReadTimestamp = Stopwatch.GetTimestamp();
                         }
                     }
 
@@ -155,7 +187,12 @@ namespace Guncon3Console
                         {
                             _connected = true;
                             _backoffStep = 0;
+                            _consecutiveDisconnects = 0;
+                            _lastGoodReadTimestamp = Stopwatch.GetTimestamp();
                             ConsoleLog.Line($"{Tag} reconnected.");
+
+                            if (!_reader.PipeTimeoutApplied)
+                                ConsoleLog.Warn($"{Tag} refused the USB transfer timeout on reconnect; a wedged device can block indefinitely.");
                         }
                         else
                         {
@@ -171,15 +208,52 @@ namespace Guncon3Console
 
                     if (result == ReadResult.Disconnected)
                     {
+                        if (++_consecutiveDisconnects < DisconnectsBeforeTeardown)
+                            continue;
+
+                        _consecutiveDisconnects = 0;
                         _connected = false;
                         _backoffStep = 0;
-                        ConsoleLog.Warn($"{Tag} disconnected. Reconnecting...");
+                        ConsoleLog.Warn($"{Tag} disconnected (win32 {_reader.LastWin32Error}). Reconnecting...");
+                        ReleaseAllInputs();
+                        continue;
+                    }
+
+                    _consecutiveDisconnects = 0;
+
+                    if (result == ReadResult.Ok)
+                    {
+                        _lastGoodReadTimestamp = Stopwatch.GetTimestamp();
+                    }
+                    else if (Stopwatch.GetTimestamp() - _lastGoodReadTimestamp >= NoDataBeforeTeardownTicks)
+                    {
+                        // Neither a real disconnect nor a single slow transfer: the gun
+                        // has produced nothing usable for the whole window, whether from
+                        // a wedge timing out on every transfer or a sustained checksum
+                        // failure storm. Re-enumerating is the only recovery left.
+                        ConsoleLog.Warn($"{Tag} no usable data for {NoDataBeforeTeardownSeconds:0.#} seconds. Reconnecting...");
+                        _lastGoodReadTimestamp = Stopwatch.GetTimestamp();
+                        _connected = false;
+                        _backoffStep = 0;
                         ReleaseAllInputs();
                         continue;
                     }
 
                     if (result == ReadResult.BadPacket)
                         continue;
+
+                    if (_reader.TakeMeasuredCentres(out var measured))
+                    {
+                        try
+                        {
+                            measured.Save(gunIndex: _index);
+                            ConsoleLog.Line($"{Tag} stick centres measured: HatX={measured.HatX} HatY={measured.HatY} RX={measured.RX} RY={measured.RY} (saved)");
+                        }
+                        catch (Exception ex)
+                        {
+                            ConsoleLog.Warn($"{Tag} could not save stick centres: {ex.Message}");
+                        }
+                    }
 
                     var snapshot = _snapshot();
 
@@ -196,6 +270,8 @@ namespace Guncon3Console
                     {
                         _mouse.Feed(snapshot.Mapping);
                         _keyboard.Feed(snapshot.Mapping);
+                        _joystick.Centres = _reader.Centres;
+                        _joystick.Feed(snapshot.Mapping);
                     }
                     catch (Exception ex)
                     {
@@ -229,6 +305,9 @@ namespace Guncon3Console
 
             try { _mouse.Feed(GunMapping.Empty); }
             catch (Exception ex) { ConsoleLog.Warn($"{Tag} mouse release failed: {ex.Message}"); }
+
+            try { _joystick.Release(); }
+            catch (Exception ex) { ConsoleLog.Warn($"{Tag} joystick release failed: {ex.Message}"); }
         }
 
         public void Dispose()

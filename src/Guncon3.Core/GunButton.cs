@@ -2,7 +2,7 @@
 {
     /// <summary>
     /// Logical buttons exposed by the Guncon for mapping to keyboard/mouse.
-    /// Must be public so Guncon3Console can see it.
+    /// Public so both GunconUSB and Guncon3Console can consume it.
     /// </summary>
     public enum GunButton
     {
@@ -21,6 +21,12 @@
         LUp,
         LDown,
         LLeft,
-        LRight
+        LRight,
+
+        // "Digitalized" right stick axes
+        RUp,
+        RDown,
+        RLeft,
+        RRight
     }
 }

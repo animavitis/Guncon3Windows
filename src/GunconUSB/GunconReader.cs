@@ -25,9 +25,47 @@ namespace GunconUSB
         private const int vid = 2970;   // 0x0B9A (Namco)
         private USBDevice device = null;
         private USBInterface iface;
+
+        /// <summary>
+        /// How long a single USB transfer may take before WinUSB abandons it. The gun
+        /// answers in single-digit milliseconds, so this is a wide margin that exists
+        /// only to bound a wedged device — it turns an indefinite block into one
+        /// dropped frame. GunWorker's no-data teardown window (in the console
+        /// project) must stay well above this value — by a factor of ten or better —
+        /// or a single timeout becomes a hair trigger for tearing the device down.
+        /// </summary>
+        private const int PipeTimeoutMs = 100;
+
+        /// <summary>
+        /// False when the driver refused the transfer-timeout policy, in which case a
+        /// wedged device can still block indefinitely.
+        /// </summary>
+        public bool PipeTimeoutApplied { get; private set; }
+
+        /// <summary>
+        /// The Win32 error code behind the most recent <see cref="USBException"/>
+        /// classified by <see cref="Read"/>, or 0 if none has occurred yet.
+        /// Diagnostic only: it lets the disconnect log line say what the driver
+        /// actually reported, since the whole timeout/disconnect split rests on
+        /// ERROR_SEM_TIMEOUT being 121 for this transfer path, and a driver that
+        /// disagrees would otherwise be indistinguishable from a real unplug.
+        /// </summary>
+        public int LastWin32Error { get; private set; }
         private readonly byte[] readBuffer = new byte[15];
         private readonly byte[] decodedBuffer = new byte[13];
         private static readonly Guid deviceguid = new Guid("{A5DCBF10-6530-11D2-901F-00C04FB951ED}");
+
+        // Number of frames to sample before settling on a measured centre for each axis.
+        private const int CentreSamples = 60;
+
+        private readonly List<int> _hatXSamples = new List<int>(CentreSamples);
+        private readonly List<int> _hatYSamples = new List<int>(CentreSamples);
+        private readonly List<int> _rxSamples = new List<int>(CentreSamples);
+        private readonly List<int> _rySamples = new List<int>(CentreSamples);
+
+        private StickCentres _centres = new StickCentres();
+        private bool _measuringCentres = true;
+        private bool _centresJustMeasured;
 
         // Each reader has its own state
         public GunState State { get; } = new GunState();
@@ -39,6 +77,38 @@ namespace GunconUSB
 
         /// <summary>The device path this reader last connected to, or null.</summary>
         public string DevicePath { get; private set; }
+
+        /// <summary>
+        /// The per-axis stick centres in use. Assign a loaded set before the first
+        /// Read() to skip measurement entirely.
+        /// </summary>
+        public StickCentres Centres
+        {
+            get => _centres;
+            set
+            {
+                if (value == null || !value.IsValid()) return;
+                _centres = value;
+                _measuringCentres = false;
+            }
+        }
+
+        /// <summary>
+        /// Returns the centres exactly once, if this reader measured them itself, so
+        /// the caller can persist them. Returns false otherwise.
+        /// </summary>
+        public bool TakeMeasuredCentres(out StickCentres centres)
+        {
+            if (_centresJustMeasured)
+            {
+                _centresJustMeasured = false;
+                centres = _centres;
+                return true;
+            }
+
+            centres = null;
+            return false;
+        }
 
         /// <summary>
         /// Returns all Guncon3 USB device infos found on the system.
@@ -58,11 +128,25 @@ namespace GunconUSB
             if (devInfo == null)
                 throw new ArgumentNullException(nameof(devInfo));
 
+            PipeTimeoutApplied = false;
+
             try
             {
                 device = new USBDevice(devInfo);
                 iface = device.Interfaces[0];
                 DevicePath = devInfo.DevicePath;
+
+                try
+                {
+                    iface.OutPipe.Policy.PipeTransferTimeout = PipeTimeoutMs;
+                    iface.InPipe.Policy.PipeTransferTimeout = PipeTimeoutMs;
+                    PipeTimeoutApplied = true;
+                }
+                catch
+                {
+                    // The driver refused the policy. A reader without a timeout is
+                    // what we have today, which works, so the connect still succeeds.
+                }
             }
             catch
             {
@@ -102,6 +186,9 @@ namespace GunconUSB
             try { candidates = FindAllDevices(); }
             catch { return false; }
 
+            // Safe to try the remembered path without checking claimedPaths: no two
+            // readers can ever hold the same DevicePath, since the fallback loop below
+            // skips claimed paths and Connect only records a path once it succeeds.
             var preferred = candidates.Find(d => string.Equals(d.DevicePath, DevicePath, StringComparison.OrdinalIgnoreCase));
             if (preferred != null)
             {
@@ -130,9 +217,15 @@ namespace GunconUSB
                 iface.OutPipe.Write(GunconDecoder.Key);
                 n = iface.InPipe.Read(readBuffer);
             }
-            catch (USBException)
+            catch (USBException ex)
             {
-                return ReadResult.Disconnected;
+                LastWin32Error = UsbErrors.Win32CodeOf(ex);
+
+                // A timed-out transfer is a dropped frame, not a disconnection: the device
+                // is still enumerated and simply did not answer. Treating it as a
+                // disconnect would release the gun's inputs and re-enumerate over a single
+                // slow transfer.
+                return UsbErrors.IsTransferTimeout(ex) ? ReadResult.BadPacket : ReadResult.Disconnected;
             }
             catch (ObjectDisposedException)
             {
@@ -167,16 +260,50 @@ namespace GunconUSB
             State.ABS_X = (short)(decodedBuffer[8] * 256 + decodedBuffer[9]);
             State.INDICATOR1 = (decodedBuffer[11] & 0x10) != 0;
             State.INDICATOR2 = (decodedBuffer[11] & 0x08) != 0;
-            // Digitalize left analog (LUp/LDown/LLeft/LRight)
-            // ABS_HAT0X / ABS_HAT0Y are 0..255 with center ~128.
-            const int DEAD = 20; // deadzone in raw units (~8%)
+
             int lx = (int)State.ABS_HAT0X;
             int ly = (int)State.ABS_HAT0Y;
+            int rx = (int)State.ABS_RX;
+            int ry = (int)State.ABS_RY;
 
-            State.BtnState[GunButton.LLeft]  = lx < (128 - DEAD);
-            State.BtnState[GunButton.LRight] = lx > (128 + DEAD);
-            State.BtnState[GunButton.LUp]    = ly < (128 - DEAD);
-            State.BtnState[GunButton.LDown]  = ly > (128 + DEAD);
+            if (_measuringCentres)
+            {
+                _hatXSamples.Add(lx);
+                _hatYSamples.Add(ly);
+                _rxSamples.Add(rx);
+                _rySamples.Add(ry);
+
+                if (_hatXSamples.Count >= CentreSamples)
+                {
+                    _centres = new StickCentres
+                    {
+                        HatX = StickDigitizer.EstimateCentre(_hatXSamples),
+                        HatY = StickDigitizer.EstimateCentre(_hatYSamples),
+                        RX = StickDigitizer.EstimateCentre(_rxSamples),
+                        RY = StickDigitizer.EstimateCentre(_rySamples)
+                    };
+                    _measuringCentres = false;
+                    _centresJustMeasured = true;
+
+                    _hatXSamples.Clear();
+                    _hatYSamples.Clear();
+                    _rxSamples.Clear();
+                    _rySamples.Clear();
+                }
+            }
+
+            // Digitalize both analog sticks (ABS_HAT0X/Y and ABS_RX/Y are 0..255,
+            // centered around a per-axis measured or default centre). Both sticks
+            // share one implementation.
+            State.BtnState[GunButton.LLeft]  = StickDigitizer.IsLow(lx, _centres.HatX);
+            State.BtnState[GunButton.LRight] = StickDigitizer.IsHigh(lx, _centres.HatX);
+            State.BtnState[GunButton.LUp]    = StickDigitizer.IsLow(ly, _centres.HatY);
+            State.BtnState[GunButton.LDown]  = StickDigitizer.IsHigh(ly, _centres.HatY);
+
+            State.BtnState[GunButton.RLeft]  = StickDigitizer.IsLow(rx, _centres.RX);
+            State.BtnState[GunButton.RRight] = StickDigitizer.IsHigh(rx, _centres.RX);
+            State.BtnState[GunButton.RUp]    = StickDigitizer.IsLow(ry, _centres.RY);
+            State.BtnState[GunButton.RDown]  = StickDigitizer.IsHigh(ry, _centres.RY);
 
 
             // Compatibility with the EXE calibrator

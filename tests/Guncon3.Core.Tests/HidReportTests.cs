@@ -27,6 +27,7 @@ namespace Guncon3.Core.Tests
         {
             Assert.Equal(Marshal.SizeOf<SetFeatureMouseAbs>(), HidReport.SizeOf<SetFeatureMouseAbs>());
             Assert.Equal(Marshal.SizeOf<SetFeatureKeyboard>(), HidReport.SizeOf<SetFeatureKeyboard>());
+            Assert.Equal(Marshal.SizeOf<SetFeatureJoy>(), HidReport.SizeOf<SetFeatureJoy>());
         }
 
         [Fact]
@@ -34,6 +35,7 @@ namespace Guncon3.Core.Tests
         {
             Assert.Equal(7, HidReport.SizeOf<SetFeatureMouseAbs>());
             Assert.Equal(14, HidReport.SizeOf<SetFeatureKeyboard>());
+            Assert.Equal(37, HidReport.SizeOf<SetFeatureJoy>());
         }
 
         [Theory]
@@ -75,6 +77,48 @@ namespace Guncon3.Core.Tests
             HidReport.Write(in value, buffer);
 
             Assert.Equal(LegacyPack(value), buffer[..HidReport.SizeOf<SetFeatureKeyboard>()]);
+            Assert.Equal(0, buffer[^1]);
+        }
+
+        [Fact]
+        public void JoyReport_PacksIdenticallyToLegacyPath()
+        {
+            var value = new SetFeatureJoy
+            {
+                ReportID = 1,
+                CommandCode = 2,
+                X = 100,
+                Y = 200,
+                Z = 300,
+                rX = 400,
+                rY = 500,
+                rZ = 0,
+                slider = 0,
+                dial = 0,
+                wheel = 0,
+                hat = 0,
+                btn0 = 0b0000_0001,
+                btn1 = 0b0000_0001,
+                btn2 = 0,
+                btn3 = 0,
+                btn4 = 0,
+                btn5 = 0,
+                btn6 = 0,
+                btn7 = 0,
+                btn8 = 0,
+                btn9 = 0,
+                btn10 = 0,
+                btn11 = 0,
+                btn12 = 0,
+                btn13 = 0,
+                btn14 = 0,
+                btn15 = 0
+            };
+
+            var buffer = new byte[HidReport.SizeOf<SetFeatureJoy>() + 1];
+            HidReport.Write(in value, buffer);
+
+            Assert.Equal(LegacyPack(value), buffer[..HidReport.SizeOf<SetFeatureJoy>()]);
             Assert.Equal(0, buffer[^1]);
         }
 
