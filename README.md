@@ -182,12 +182,10 @@ wrong, delete `stick_centre.txt` and it measures again on the next run.
 ## Notes
 - Recalibrate after changing monitor or resolution.
 - Multi-monitor setups are supported.
-- Design notes, the implementation plan and the handover checklist are in
-  [docs/superpowers/](docs/superpowers/).
 - All code and binaries licensed under **GPL-2.0**, inherited from the original work
   by [sonik-br](https://github.com/sonik-br/GunconUSB).
 
 ---
 
-© 2025 gameotaku79
+© 2026 AnimaVitis
 Fork of [sonik-br/GunconUSB](https://github.com/sonik-br/GunconUSB)
