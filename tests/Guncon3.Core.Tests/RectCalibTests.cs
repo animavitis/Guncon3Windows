@@ -1,5 +1,3 @@
-using System;
-using System.IO;
 using Guncon3.Core;
 using Xunit;
 
@@ -21,6 +19,34 @@ namespace Guncon3.Core.Tests
             Assert.True(Sample().IsValid());
             Assert.False(new RectCalib { RawMinX = 5, RawMaxX = 5, RawMinY = 0, RawMaxY = 1, ScreenW = 1, ScreenH = 1 }.IsValid());
             Assert.False(new RectCalib { RawMinX = 0, RawMaxX = 1, RawMinY = 0, RawMaxY = 1, ScreenW = 0, ScreenH = 1 }.IsValid());
+        }
+
+        [Fact]
+        public void IsValid_RejectsNonFiniteRawFields()
+        {
+            Assert.False(new RectCalib { RawMinX = double.NegativeInfinity, RawMaxX = double.PositiveInfinity, RawMinY = 0, RawMaxY = 1, ScreenW = 1, ScreenH = 1 }.IsValid());
+            Assert.False(new RectCalib { RawMinX = 0, RawMaxX = 1, RawMinY = double.NegativeInfinity, RawMaxY = double.PositiveInfinity, ScreenW = 1, ScreenH = 1 }.IsValid());
+            Assert.False(new RectCalib { RawMinX = double.NaN, RawMaxX = 1, RawMinY = 0, RawMaxY = 1, ScreenW = 1, ScreenH = 1 }.IsValid());
+        }
+
+        [Fact]
+        public void MapNormalized_ReturnsOriginForAnInfiniteRectRatherThanNaN()
+        {
+            var rc = new RectCalib { RawMinX = double.NegativeInfinity, RawMaxX = double.PositiveInfinity, RawMinY = 0, RawMaxY = 1, ScreenW = 1920, ScreenH = 1080 };
+
+            var mapped = rc.MapNormalized(0, 0);
+
+            Assert.Equal((0.0, 0.0), mapped);
+        }
+
+        [Fact]
+        public void IsValid_AcceptsHardwareScaleRawRanges()
+        {
+            // From tests/Guncon3.Core.Tests/data/packets.txt: X roughly [-10142, 4652],
+            // Y [-5728, 4860], signed. The finiteness clause must not reject this.
+            var rc = new RectCalib { RawMinX = -10142, RawMaxX = 4652, RawMinY = -5728, RawMaxY = 4860, ScreenW = 1920, ScreenH = 1080, InvertY = true };
+
+            Assert.True(rc.IsValid());
         }
 
         [Fact]
@@ -85,84 +111,5 @@ namespace Guncon3.Core.Tests
             Assert.Equal((0.0, 0.0), rc.MapNormalized(500, 500));
         }
 
-        [Fact]
-        public void SaveThenLoad_RoundTripsEveryField()
-        {
-            var path = Path.Combine(Path.GetTempPath(), Path.GetRandomFileName());
-            try
-            {
-                var original = Sample();
-                original.InvertY = true;
-                original.Save(path);
-
-                var loaded = RectCalib.Load(path);
-
-                Assert.NotNull(loaded);
-                Assert.Equal(original.RawMinX, loaded.RawMinX);
-                Assert.Equal(original.RawMaxX, loaded.RawMaxX);
-                Assert.Equal(original.RawMinY, loaded.RawMinY);
-                Assert.Equal(original.RawMaxY, loaded.RawMaxY);
-                Assert.Equal(original.ScreenW, loaded.ScreenW);
-                Assert.Equal(original.ScreenH, loaded.ScreenH);
-                Assert.True(loaded.InvertY);
-            }
-            finally { File.Delete(path); }
-        }
-
-        [Fact]
-        public void Load_IgnoresCommentsAndBlankLines()
-        {
-            var path = Path.Combine(Path.GetTempPath(), Path.GetRandomFileName());
-            try
-            {
-                File.WriteAllLines(path, new[]
-                {
-                    "# written by the calibration window",
-                    "",
-                    "RawMinX=100",
-                    "  RawMaxX = 1100  ",
-                    "RawMinY=200",
-                    "RawMaxY=1200",
-                    "ScreenW=1921",
-                    "ScreenH=1081",
-                    "InvertY=1"
-                });
-
-                var loaded = RectCalib.Load(path);
-
-                Assert.NotNull(loaded);
-                Assert.Equal(1100, loaded.RawMaxX);
-                Assert.True(loaded.InvertY);
-            }
-            finally { File.Delete(path); }
-        }
-
-        [Fact]
-        public void Load_ReturnsNullForMissingFile()
-        {
-            Assert.Null(RectCalib.Load(Path.Combine(Path.GetTempPath(), "no-such-" + Path.GetRandomFileName())));
-        }
-
-        [Fact]
-        public void Load_UsesInvariantDecimalSeparator()
-        {
-            var path = Path.Combine(Path.GetTempPath(), Path.GetRandomFileName());
-            try
-            {
-                File.WriteAllLines(path, new[]
-                {
-                    "RawMinX=100.5", "RawMaxX=1100.25",
-                    "RawMinY=200", "RawMaxY=1200",
-                    "ScreenW=1921", "ScreenH=1081", "InvertY=0"
-                });
-
-                var loaded = RectCalib.Load(path);
-
-                Assert.NotNull(loaded);
-                Assert.Equal(100.5, loaded.RawMinX);
-                Assert.Equal(1100.25, loaded.RawMaxX);
-            }
-            finally { File.Delete(path); }
-        }
     }
 }

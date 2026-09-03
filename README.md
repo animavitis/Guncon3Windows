@@ -20,7 +20,10 @@ executable, and it calibrates itself on first launch.
 ## Features
 - 🔧 **Automatic calibration on first launch**
 - 🎯 **Hot recalibration** anytime with **F12**
-- 🧭 **Five-point calibration system** (four corners + center)
+- 🧭 **Five-point calibration system** (four corners + center) that fits two aiming
+  mappings from one capture — the original linear rectangle and a projective one
+  that stays accurate when the gun is held off the screen's axis — switchable live
+  with **H** to compare
 - 🎮 **Both analog sticks, digitalized** — left (LUp / LDown / LLeft / LRight) and
   right (RUp / RDown / RLeft / RRight), mappable like any button
 - 🕹️ **Virtual joystick output** — both sticks as analog axes, plus the gun's depth
@@ -127,6 +130,8 @@ Guncon3Console.exe dump     capture raw USB frames to packets.txt
 ```
 
 While running: **F12** recalibrates every gun, **R** reloads the mapping files,
+**H** toggles every gun between the linear and projective calibration mapping
+(not remembered across runs — every launch starts on the linear mapping),
 **ESC** exits.
 
 ---
@@ -164,7 +169,7 @@ The same list is kept in [docs/keycodes.txt](docs/keycodes.txt) for convenience.
 | file | written by | notes |
 |---|---|---|
 | `mapping.txt` | you | per gun: `mapping_2.txt`, `mapping_3.txt`, … |
-| `calibration_rect.txt` | the calibration window | per gun; files from earlier versions still work |
+| `calibration_rect.txt` | the calibration window | per gun; stores the five raw captured points plus the derived rectangle, so both the linear and projective mappings come from one capture; files from earlier versions have no points and still load, on the linear mapping only, until the gun is recalibrated |
 | `stick_centre.txt` | measured automatically | per gun; delete it to re-measure |
 
 Stick centres are measured from the first 60 frames after startup and printed to the

@@ -258,9 +258,10 @@ namespace Guncon3Console
                     var snapshot = _snapshot();
 
                     var calibration = snapshot.Calibration;
-                    if (calibration != null && calibration.IsValid())
+                    if (calibration != null && calibration.Rect.IsValid())
                     {
-                        var (nx, ny) = calibration.MapNormalized(_reader.State.RAW_X, _reader.State.RAW_Y);
+                        var (nx, ny) = calibration.MapNormalized(
+                            _reader.State.RAW_X, _reader.State.RAW_Y, snapshot.Mode);
 
                         _reader.State.ABS_X = (short)Math.Round(nx * 32767.0);
                         _reader.State.ABS_Y = (short)Math.Round(ny * 32767.0);

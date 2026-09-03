@@ -9,17 +9,21 @@ namespace Guncon3Console
     /// </summary>
     internal sealed class GunSnapshot
     {
-        public static GunSnapshot Empty { get; } = new GunSnapshot(GunMapping.Empty, null);
+        public static GunSnapshot Empty { get; } = new GunSnapshot(GunMapping.Empty, null, CalibrationMode.Rect);
 
         public GunMapping Mapping { get; }
 
         /// <summary>Null when the gun has no usable calibration.</summary>
-        public RectCalib Calibration { get; }
+        public CalibrationFile Calibration { get; }
 
-        public GunSnapshot(GunMapping mapping, RectCalib calibration)
+        /// <summary>Which of the calibration's two mappings to aim through.</summary>
+        public CalibrationMode Mode { get; }
+
+        public GunSnapshot(GunMapping mapping, CalibrationFile calibration, CalibrationMode mode)
         {
             Mapping = mapping;
             Calibration = calibration;
+            Mode = mode;
         }
     }
 }

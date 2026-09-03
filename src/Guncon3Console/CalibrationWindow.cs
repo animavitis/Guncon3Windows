@@ -18,15 +18,17 @@ namespace Guncon3Console
         private bool _prevTrig = false;
         private bool _prevA1 = false, _prevC2 = false;
         private bool _checking = false;
-        private RectCalib _rectForCheck = null;
+        private CalibrationFile _fileForCheck = null;
 
         private readonly GunconReader _reader;
         private readonly int _gunIndex;
+        private readonly CalibrationMode _mode;
 
-        public CalibrationWindow(GunconReader reader, int gunIndex = 0)
+        public CalibrationWindow(GunconReader reader, int gunIndex = 0, CalibrationMode mode = CalibrationMode.Rect)
         {
             _reader = reader ?? throw new ArgumentNullException(nameof(reader));
             _gunIndex = gunIndex;
+            _mode = mode;
 
             FormBorderStyle = FormBorderStyle.None;
             WindowState = FormWindowState.Maximized;
@@ -93,7 +95,7 @@ namespace Guncon3Console
                 if (!_prevA1 && a1)
                 {
                     _checking = false;
-                    _rectForCheck = null;
+                    _fileForCheck = null;
                     _rawPoints.Clear();
                     _idx = 0;
                     RebuildTargets();
@@ -152,32 +154,13 @@ namespace Guncon3Console
             {
                 _poll.Stop();
 
-                double minX = double.MaxValue, maxX = double.MinValue, minY = double.MaxValue, maxY = double.MinValue;
-                foreach (var p in _rawPoints)
-                {
-                    if (p.X < minX) minX = p.X;
-                    if (p.X > maxX) maxX = p.X;
-                    if (p.Y < minY) minY = p.Y;
-                    if (p.Y > maxY) maxY = p.Y;
-                }
-
                 int W = Screen.PrimaryScreen.Bounds.Width;
                 int H = Screen.PrimaryScreen.Bounds.Height;
 
-                var rc = new RectCalib
-                {
-                    RawMinX = (int)Math.Round(minX),
-                    RawMaxX = (int)Math.Round(maxX),
-                    RawMinY = (int)Math.Round(minY),
-                    RawMaxY = (int)Math.Round(maxY),
-                    ScreenW = W,
-                    ScreenH = H,
-                    InvertY = true
-                };
+                var file = CalibrationFile.FromCapture(_rawPoints, W, H);
+                file.Save(gunIndex: _gunIndex);
 
-                rc.Save(gunIndex: _gunIndex);
-
-                _rectForCheck = rc;
+                _fileForCheck = file;
                 _checking = true;
                 _poll.Start();
             }
@@ -226,7 +209,7 @@ namespace Guncon3Console
 
                 double rx = _reader.State.ABS_X;
                 double ry = _reader.State.ABS_Y;
-                var (nx, ny) = _rectForCheck.MapNormalized(rx, ry);
+                var (nx, ny) = _fileForCheck.MapNormalized(rx, ry, _mode);
 
                 DrawCrosshair(g,
                     (float)(nx * (ClientSize.Width - 1)),

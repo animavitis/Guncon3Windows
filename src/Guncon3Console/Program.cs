@@ -48,6 +48,7 @@ namespace Guncon3Console
         // tracks the connection state.
         private static readonly List<GunInstance> _guns = new List<GunInstance>();
         private static volatile bool _running = true;
+        private static CalibrationMode _calibrationMode = CalibrationMode.Rect;
 
         [STAThread]
         private static void Main(string[] args)
@@ -131,11 +132,11 @@ namespace Guncon3Console
             // --- Calibration for each gun ---
             foreach (var gun in _guns)
             {
-                if (!LoadRectCalib(gun))
+                if (!LoadCalibration(gun))
                 {
                     ConsoleLog.Line($"[Gun {gun.Index + 1}] No usable calibration. Opening calibration...");
                     LaunchCalibrationWindowModal(gun);
-                    if (!LoadRectCalib(gun))
+                    if (!LoadCalibration(gun))
                     {
                         ConsoleLog.Line($"[Gun {gun.Index + 1}] WARNING: no calibration — gun will not be accurate.");
                     }
@@ -158,7 +159,8 @@ namespace Guncon3Console
 
             ConsoleLog.Line("Mapping OK.");
             ConsoleLog.Line($"Ready to use! {_guns.Count} gun(s) active.");
-            ConsoleLog.Line("  F12 = recalibrate all guns,  R = reload mappings,  ESC = exit");
+            ConsoleLog.Line($"[Calibration] {_calibrationMode} mode.");
+            ConsoleLog.Line("  F12 = recalibrate all guns,  R = reload mappings,  H = toggle calibration mode,  ESC = exit");
 
             var workers = new List<GunWorker>();
             foreach (var gun in _guns)
@@ -183,6 +185,8 @@ namespace Guncon3Console
                     RecalibrateAll(workers);
                 else if (k.Key == ConsoleKey.R)
                     ReloadMappings();
+                else if (k.Key == ConsoleKey.H)
+                    ToggleCalibrationMode();
             }
 
             foreach (var w in workers) w.RequestStop();
@@ -221,14 +225,47 @@ namespace Guncon3Console
             if (announce) ConsoleLog.Line("[Mapping] OK.");
         }
 
-        private static bool LoadRectCalib(GunInstance gun)
+        /// <summary>
+        /// Flips every gun between the linear and the projective mapping. Both come
+        /// from the same capture, so this is a live A/B: point at the same spot and
+        /// press H. The choice is not remembered across runs.
+        /// </summary>
+        private static void ToggleCalibrationMode()
         {
-            var outcome = RectCalib.TryLoad(null, gun.Index, out var calib);
+            _calibrationMode = _calibrationMode == CalibrationMode.Rect
+                ? CalibrationMode.Homography
+                : CalibrationMode.Rect;
+
+            ConsoleLog.Line($"[Calibration] {_calibrationMode} mode.");
+
+            foreach (var gun in _guns)
+            {
+                var snapshot = gun.Snapshot;
+                gun.Publish(new GunSnapshot(snapshot.Mapping, snapshot.Calibration, _calibrationMode));
+
+                if (_calibrationMode == CalibrationMode.Homography && snapshot.Calibration?.Homography == null)
+                {
+                    if (snapshot.Calibration == null)
+                        ConsoleLog.Warn($"[Gun {gun.Index + 1}] has no calibration at all. Recalibrate with F12.");
+                    else
+                        ConsoleLog.Warn($"[Gun {gun.Index + 1}] has no projective calibration; still using the linear one. "
+                                      + "Recalibrate with F12 to get one.");
+                }
+            }
+        }
+
+        private static bool LoadCalibration(GunInstance gun)
+        {
+            var outcome = CalibrationFile.TryLoad(null, gun.Index, out var calib);
 
             if (outcome == CalibrationLoad.Malformed)
                 ConsoleLog.Warn($"[Gun {gun.Index + 1}] calibration_rect file is malformed and will be ignored.");
 
-            gun.Publish(new GunSnapshot(gun.Snapshot.Mapping, calib));
+            if (calib?.Homography != null && calib.Homography.IsSuspect)
+                ConsoleLog.Warn($"[Gun {gun.Index + 1}] the projective calibration disagrees with the captured centre by "
+                              + $"{calib.Homography.CentreError:0.###} of the screen. Recalibrate if aiming is off in H mode.");
+
+            gun.Publish(new GunSnapshot(gun.Snapshot.Mapping, calib, _calibrationMode));
             return calib != null;
         }
 
@@ -236,7 +273,7 @@ namespace Guncon3Console
         {
             try
             {
-                using (var w = new CalibrationWindow(gun.Reader, gun.Index))
+                using (var w = new CalibrationWindow(gun.Reader, gun.Index, _calibrationMode))
                     Application.Run(w);
             }
             catch (Exception ex)
@@ -265,7 +302,7 @@ namespace Guncon3Console
                 {
                     LaunchCalibrationWindowModal(gun);
 
-                    if (LoadRectCalib(gun))
+                    if (LoadCalibration(gun))
                         ConsoleLog.Line($"[Gun {gun.Index + 1}] Calibration loaded.");
                     else
                         ConsoleLog.Warn($"[Gun {gun.Index + 1}] WARNING: calibration not saved.");
@@ -317,7 +354,7 @@ namespace Guncon3Console
         {
             var mapping = MappingFile.Load(path);
 
-            gun.Publish(new GunSnapshot(mapping, gun.Snapshot.Calibration));
+            gun.Publish(new GunSnapshot(mapping, gun.Snapshot.Calibration, _calibrationMode));
 
             foreach (var d in mapping.Diagnostics)
                 ConsoleLog.Line($"[Gun {gun.Index + 1} Mapping] {d}");
