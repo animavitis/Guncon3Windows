@@ -1,60 +1,29 @@
-﻿using System;
 using System.Diagnostics;
-using GunconUSB;
 using Guncon3.Core;
 
 namespace Guncon3Console.TetherScript
 {
-    class KeyboardFeeder
+    class KeyboardFeeder : FeederBase<SetFeatureKeyboard>
     {
-        private readonly HIDController HID = new HIDController();
-        private readonly GunState _state;
-
         private readonly uint FTimeout = 5000;
-
-        private static readonly int ReportSize = HidReport.SizeOf<SetFeatureKeyboard>();
-        private readonly byte[] _reportBuffer = new byte[ReportSize + 1];
 
         private readonly KeySetBuilder _keys = new KeySetBuilder();
 
         private static readonly long PingIntervalTicks = Stopwatch.Frequency;   // 1000 ms
         private long _lastSendTimestamp;
 
-        private readonly FeederHealth _health = new FeederHealth("Keyboard");
-
-        /// <summary>False once the virtual device has rejected several reports in a row.</summary>
-        public bool Healthy => _health.Healthy;
-
         public KeyboardFeeder(GunState state)
+            : base(state, "Keyboard", DriversConst.TTC_PRODUCTID_KEYBOARD)
         {
-            _state = state ?? throw new ArgumentNullException(nameof(state));
         }
 
-        public void Connect()
+        protected override void OnConnected()
         {
-            HID.OnLog += Log;
-            HID.VendorID = (ushort)DriversConst.TTC_VENDORID;
-            HID.ProductID = (ushort)DriversConst.TTC_PRODUCTID_KEYBOARD;
-            HID.Connect();
-            if (!HID.Connected)
-                throw new Exception("Could not connect to TetherScript Keyboard.");
-
             _keys.Reset();
             _lastSendTimestamp = Stopwatch.GetTimestamp();
         }
 
-        public void Disconnect()
-        {
-            try
-            {
-                Send(0, 0, 0, 0, 0, 0, 0, 0);
-            }
-            catch { }
-            HID.Disconnect();
-            HID.OnLog -= Log;
-        }
-
-        private void Log(object s, LogArgs e) => ConsoleLog.Line("Keyboard " + e.Msg);
+        protected override void ReleaseHeldInputs() => Send(0, 0, 0, 0, 0, 0, 0, 0);
 
         public void Send(byte Modifier, byte Padding, byte Key0, byte Key1, byte Key2, byte Key3, byte Key4, byte Key5)
         {
@@ -73,8 +42,7 @@ namespace Guncon3Console.TetherScript
                 Key5 = Key5
             };
 
-            HidReport.Write(in data, _reportBuffer);
-            _health.Track(HID.SendData(_reportBuffer, (uint)ReportSize));
+            Send(in data);
         }
 
         public void Ping()
@@ -86,13 +54,12 @@ namespace Guncon3Console.TetherScript
                 Timeout = FTimeout / 5
             };
 
-            HidReport.Write(in data, _reportBuffer);
-            _health.Track(HID.SendData(_reportBuffer, (uint)ReportSize));
+            Send(in data);
         }
 
         internal void Feed(GunMapping mapping)
         {
-            bool changed = _keys.Update(mapping.KeyboardPairs, _state.BtnState);
+            bool changed = _keys.Update(mapping.KeyboardPairs, State.BtnState);
 
             if (changed)
             {

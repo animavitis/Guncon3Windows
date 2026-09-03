@@ -34,5 +34,19 @@ namespace Guncon3Console
                 if (colour.HasValue) Console.ResetColor();
             }
         }
+
+        /// <summary>
+        /// Reports a fatal problem and waits for a key, so a double-clicked exe does
+        /// not vanish before the message can be read. The caller decides what to do
+        /// next; this only reports.
+        /// </summary>
+        public static void FailAndExit(string msg, Exception ex = null)
+        {
+            Error(msg);
+            if (ex != null) Error(ex.ToString());
+            Line("Press any key to exit.");
+            try { Console.ReadKey(true); } catch { }
+        }
+
     }
 }

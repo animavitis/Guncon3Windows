@@ -1,10 +1,10 @@
-﻿using MadWizard.WinUSBNet;
+﻿using Nefarius.Drivers.WinUSB;
 using System;
 using System.Collections.Generic;
 using System.Linq;
 using Guncon3.Core;
 
-namespace GunconUSB
+namespace Guncon3Console
 {
     /// <summary>Outcome of a single report read.</summary>
     public enum ReadResult
@@ -67,7 +67,6 @@ namespace GunconUSB
         private bool _measuringCentres = true;
         private bool _centresJustMeasured;
 
-        // Each reader has its own state
         public GunState State { get; } = new GunState();
 
         /// <summary>
@@ -239,7 +238,6 @@ namespace GunconUSB
             if (!GunconDecoder.TryDecode(readBuffer, decodedBuffer))
                 return ReadResult.BadPacket;
 
-            // Main buttons -> dictionary
             State.BtnState[GunButton.Trigger] = (decodedBuffer[11] & 0x20) != 0;
             State.BtnState[GunButton.A1] = (decodedBuffer[12] & 0x04) != 0;
             State.BtnState[GunButton.A2] = (decodedBuffer[12] & 0x02) != 0;
@@ -250,7 +248,6 @@ namespace GunconUSB
             State.BtnState[GunButton.AClick] = (decodedBuffer[10] & 0x80) != 0;
             State.BtnState[GunButton.BClick] = (decodedBuffer[10] & 0x40) != 0;
 
-            // Axes/indicators
             State.ABS_RY = decodedBuffer[0];
             State.ABS_RX = decodedBuffer[1];
             State.ABS_HAT0Y = decodedBuffer[2];

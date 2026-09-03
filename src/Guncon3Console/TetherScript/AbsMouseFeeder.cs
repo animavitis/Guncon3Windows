@@ -1,25 +1,12 @@
-﻿using System;
 using System.Diagnostics;
-using GunconUSB;
 using Guncon3.Core;
 
 namespace Guncon3Console.TetherScript
 {
-    class AbsMouseFeeder
+    class AbsMouseFeeder : FeederBase<SetFeatureMouseAbs>
     {
-        private readonly HIDController HID = new HIDController();
-        private readonly GunState _state;
-
         public bool Force4by3 = false;
         private byte btns = 0;
-
-        private static readonly int ReportSize = HidReport.SizeOf<SetFeatureMouseAbs>();
-        private readonly byte[] _reportBuffer = new byte[ReportSize + 1];
-
-        private readonly FeederHealth _health = new FeederHealth("Mouse");
-
-        /// <summary>False once the virtual device has rejected several reports in a row.</summary>
-        public bool Healthy => _health.Healthy;
 
         private static readonly long RefreshIntervalTicks = Stopwatch.Frequency;   // 1000 ms
         private long _lastSendTimestamp;
@@ -28,36 +15,25 @@ namespace Guncon3Console.TetherScript
         private byte _lastButtons = 0xFF;   // impossible value, forces the first send
 
         public AbsMouseFeeder(GunState state)
+            : base(state, "Mouse", DriversConst.TTC_PRODUCTID_MOUSEABS, "AbsMouse")
         {
-            _state = state ?? throw new ArgumentNullException(nameof(state));
         }
 
-        public void Connect()
+        protected override void OnConnected()
         {
-            HID.OnLog += Log;
-            HID.VendorID = (ushort)DriversConst.TTC_VENDORID;
-            HID.ProductID = (ushort)DriversConst.TTC_PRODUCTID_MOUSEABS;
-            HID.Connect();
-
-            if (!HID.Connected)
-                throw new Exception("Could not connect to TetherScript's AbsMouse");
-
             _lastButtons = 0xFF;
             _lastSendTimestamp = 0;
         }
 
-        public void Disconnect()
+        /// <summary>
+        /// The mouse report has no Timeout field, so nothing clears a held button
+        /// if we close without releasing it.
+        /// </summary>
+        protected override void ReleaseHeldInputs()
         {
-            // The mouse report has no Timeout field, so nothing clears a held button
-            // if we close without releasing it.
-            try { btns = 0; Send_Data_To_MouseAbs(_lastX, _lastY); }
-            catch { }
-
-            HID.Disconnect();
-            HID.OnLog -= Log;
+            btns = 0;
+            Send_Data_To_MouseAbs(_lastX, _lastY);
         }
-
-        private void Log(object s, LogArgs e) => ConsoleLog.Line("Mouse " + e.Msg);
 
         public void Send_Data_To_MouseAbs(ushort x, ushort y)
         {
@@ -70,8 +46,7 @@ namespace Guncon3Console.TetherScript
                 Y = y
             };
 
-            HidReport.Write(in data, _reportBuffer);
-            _health.Track(HID.SendData(_reportBuffer, (uint)ReportSize));
+            Send(in data);
         }
 
         internal void Feed(GunMapping mapping)
@@ -79,10 +54,10 @@ namespace Guncon3Console.TetherScript
             short absX = 0;
             short absY = 0;
 
-            if (_state.IsInsideScreen)
+            if (State.IsInsideScreen)
             {
-                absX = _state.ABS_X;
-                absY = _state.ABS_Y;
+                absX = State.ABS_X;
+                absY = State.ABS_Y;
 
                 if (Force4by3)
                     absX = (short)Helper.ConvertRange(4096, 28671, 0, 32767, absX);
@@ -91,7 +66,7 @@ namespace Guncon3Console.TetherScript
             btns = 0;
             foreach (var map in mapping.MousePairs)
             {
-                if (!_state.BtnState.TryGetValue(map.Key, out bool pressed) || !pressed)
+                if (!State.BtnState.TryGetValue(map.Key, out bool pressed) || !pressed)
                     continue;
 
                 if (map.Value == MouseButton.Left) btns |= 1;

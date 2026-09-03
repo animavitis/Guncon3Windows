@@ -2,7 +2,7 @@
 using System.Collections.Generic;
 using Guncon3.Core;
 
-namespace GunconUSB
+namespace Guncon3Console
 {
     public class GunState
     {
@@ -15,7 +15,6 @@ namespace GunconUSB
                 BtnState[b] = false;
         }
 
-        // RAW values from the gun
         public long ABS_RY { get; set; }
         public long ABS_RX { get; set; }
         public long ABS_HAT0Y { get; set; }

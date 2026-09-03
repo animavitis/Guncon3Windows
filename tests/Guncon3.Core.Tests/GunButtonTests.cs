@@ -8,19 +8,6 @@ namespace Guncon3.Core.Tests
     public class GunButtonTests
     {
         [Fact]
-        public void Values_AreStableAndComplete()
-        {
-            var names = Enum.GetValues<GunButton>().Select(v => v.ToString()).ToArray();
-
-            Assert.Equal(new[]
-            {
-                "Trigger", "A1", "A2", "B1", "B2", "C1", "C2", "AClick", "BClick",
-                "LUp", "LDown", "LLeft", "LRight",
-                "RUp", "RDown", "RLeft", "RRight"
-            }, names);
-        }
-
-        [Fact]
         public void Parse_IsCaseInsensitiveWhenAsked()
         {
             Assert.True(Enum.TryParse<GunButton>("trigger", ignoreCase: true, out var b));
@@ -28,6 +15,10 @@ namespace Guncon3.Core.Tests
         }
 
         /// <summary>
+        /// Pins down the whole enum: the two assertions below cover every member,
+        /// in order, so this is also the completeness check — there is deliberately
+        /// no second test restating the same list.
+        /// <para>
         /// The joystick feeder packs only the nine physical buttons into report
         /// indices 0..8. It does so from an array of named members, not from the
         /// enum's ordinal values, so a reordering would not by itself remap
@@ -35,6 +26,7 @@ namespace Guncon3.Core.Tests
         /// order the feeder is expected to use, so a reorder that no longer
         /// matches that expectation is caught and looked at rather than assumed
         /// harmless.
+        /// </para>
         /// </summary>
         [Fact]
         public void PhysicalButtons_OccupyTheFirstNineIndicesInDeclarationOrder()

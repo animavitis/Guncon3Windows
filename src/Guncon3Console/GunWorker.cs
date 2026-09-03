@@ -3,7 +3,6 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Threading;
 using Guncon3.Core;
-using GunconUSB;
 using Guncon3Console.TetherScript;
 
 namespace Guncon3Console

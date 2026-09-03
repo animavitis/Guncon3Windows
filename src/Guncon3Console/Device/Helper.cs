@@ -1,4 +1,4 @@
-﻿namespace GunconUSB
+﻿namespace Guncon3Console
 {
     public static class Helper
     {

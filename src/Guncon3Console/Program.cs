@@ -4,42 +4,12 @@ using System.IO;
 using System.Linq;
 using System.Threading;
 using System.Windows.Forms;
-using GunconUSB;
 using Guncon3.Core;
+using Nefarius.Drivers.WinUSB;
 using Guncon3Console.TetherScript;
 
 namespace Guncon3Console
 {
-    /// <summary>
-    /// Holds all per-gun objects: reader, state, calibration, feeders.
-    /// </summary>
-    internal class GunInstance
-    {
-        public int Index { get; }
-        public GunconReader Reader { get; }
-        public GunState State => Reader.State;
-        public AbsMouseFeeder MouseFeeder { get; }
-        public KeyboardFeeder KbFeeder { get; }
-        public JoystickFeeder JoyFeeder { get; }
-
-        private GunSnapshot _snapshot = GunSnapshot.Empty;
-
-        /// <summary>Reads the currently published snapshot. Safe from any thread.</summary>
-        public GunSnapshot Snapshot => Volatile.Read(ref _snapshot);
-
-        /// <summary>Replaces the published snapshot. Called only from the main thread.</summary>
-        public void Publish(GunSnapshot snapshot) => Volatile.Write(ref _snapshot, snapshot);
-
-        public GunInstance(int index, GunconReader reader)
-        {
-            Index = index;
-            Reader = reader;
-            MouseFeeder = new AbsMouseFeeder(reader.State);
-            KbFeeder = new KeyboardFeeder(reader.State);
-            JoyFeeder = new JoystickFeeder(reader.State);
-        }
-    }
-
     internal static class Program
     {
         // Built once at startup and never mutated afterwards: the workers list is
@@ -59,7 +29,7 @@ namespace Guncon3Console
             // === "keys": show keycode table and exit ===
             if (args.Length > 0 && args[0].Equals("keys", StringComparison.OrdinalIgnoreCase))
             {
-                PrintKeyCodes();
+                CliModes.PrintKeyCodes();
                 return;
             }
 
@@ -68,7 +38,7 @@ namespace Guncon3Console
             {
                 int count = (args.Length > 1 && int.TryParse(args[1], out var c)) ? c : 500;
                 string outPath = (args.Length > 2) ? args[2] : "packets.txt";
-                DumpPackets(count, outPath);
+                CliModes.DumpPackets(count, outPath);
                 return;
             }
 
@@ -77,20 +47,20 @@ namespace Guncon3Console
             Application.SetCompatibleTextRenderingDefault(false);
 
             // --- Detect all Guncon3 devices ---
-            List<MadWizard.WinUSBNet.USBDeviceInfo> devices;
+            List<USBDeviceInfo> devices;
             try
             {
                 devices = GunconReader.FindAllDevices();
             }
             catch (Exception ex)
             {
-                FailAndExit("Could not enumerate USB devices", ex);
+                ConsoleLog.FailAndExit("Could not enumerate USB devices", ex);
                 return;
             }
 
             if (devices.Count == 0)
             {
-                FailAndExit("No Guncon3 device found.");
+                ConsoleLog.FailAndExit("No Guncon3 device found.");
                 return;
             }
 
@@ -125,7 +95,7 @@ namespace Guncon3Console
 
             if (_guns.Count == 0)
             {
-                FailAndExit("No Guncon3 could be connected.");
+                ConsoleLog.FailAndExit("No Guncon3 could be connected.");
                 return;
             }
 
@@ -362,84 +332,6 @@ namespace Guncon3Console
             ConsoleLog.Line($"[Gun {gun.Index + 1} Mapping] Mouse: {mapping.Mouse.Count} entries, Keyboard: {mapping.Keyboard.Count} entries.");
         }
 
-        private static void FailAndExit(string msg, Exception ex = null)
-        {
-            ConsoleLog.Error(msg);
-            if (ex != null) ConsoleLog.Error(ex.ToString());
-            ConsoleLog.Line("Press any key to exit.");
-            try { Console.ReadKey(true); } catch { }
-        }
-
-        private static void DumpPackets(int count, string outPath)
-        {
-            List<MadWizard.WinUSBNet.USBDeviceInfo> devices;
-            try
-            {
-                devices = GunconReader.FindAllDevices();
-            }
-            catch (Exception ex)
-            {
-                FailAndExit("Could not enumerate USB devices", ex);
-                return;
-            }
-
-            if (devices.Count == 0)
-            {
-                FailAndExit("No Guncon3 device found.");
-                return;
-            }
-
-            var reader = new GunconReader();
-            try
-            {
-                reader.Connect(devices[0]);
-            }
-            catch (Exception ex)
-            {
-                FailAndExit("Could not connect to the Guncon3", ex);
-                return;
-            }
-
-            // Give up rather than spin forever when nothing ever decodes: a wrong
-            // device or an unpaired gun would otherwise hang with no output at all.
-            int maxFailures = Math.Max(1000, count * 20);
-
-            var lines = new List<string>(count);
-            int bad = 0;
-
-            ConsoleLog.Line($"Capturing {count} frames. Move and shoot the gun to vary the data.");
-
-            try
-            {
-                while (lines.Count < count && bad < maxFailures)
-                {
-                    if (reader.Read() != ReadResult.Ok)
-                    {
-                        bad++;
-                        if (bad % 500 == 0)
-                            ConsoleLog.Line($"  {bad} reads rejected so far, {lines.Count}/{count} captured.");
-                        continue;
-                    }
-
-                    lines.Add(Convert.ToHexString(reader.LastRawFrame));
-
-                    if (lines.Count % 50 == 0)
-                        ConsoleLog.Line($"  {lines.Count}/{count}");
-                }
-            }
-            finally
-            {
-                try { reader.Disconnect(); } catch { }
-            }
-
-            File.WriteAllLines(outPath, lines);
-
-            if (lines.Count < count)
-                ConsoleLog.Line($"Gave up after {bad} rejected reads. Wrote {lines.Count} frames to {outPath}.");
-            else
-                ConsoleLog.Line($"Wrote {lines.Count} frames to {outPath} ({bad} reads rejected).");
-        }
-
         private static void PrintHeader()
         {
             ConsoleLog.Header("GUNCON3 V0.50 - MULTI-GUN SUPPORT (BASED ON SONIK PROJECT)");
@@ -450,19 +342,5 @@ namespace Guncon3Console
             ConsoleLog.Line("Supports up to 2 lightguns (or more).");
         }
 
-        // === Full keycode table (4..111) ===
-        private static void PrintKeyCodes()
-        {
-            Console.ForegroundColor = ConsoleColor.Cyan;
-            Console.WriteLine("KEYCODE\tKEY");
-            Console.ResetColor();
-
-            foreach (var (code, name) in KeyCodeTable.Entries)
-                Console.WriteLine($"{code}\t{name}");
-
-            Console.WriteLine();
-            Console.WriteLine("Press any key to exit…");
-            try { Console.ReadKey(true); } catch { }
-        }
     }
 }

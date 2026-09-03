@@ -4,7 +4,6 @@ using System.Drawing;
 using System.IO;
 using System.Windows.Forms;
 using WinFormsTimer = System.Windows.Forms.Timer;
-using GunconUSB;
 using Guncon3.Core;
 
 namespace Guncon3Console

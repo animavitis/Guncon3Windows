@@ -24,16 +24,10 @@ namespace Guncon3.Core.Tests
             Assert.Equal(0.0, h[5], 9);
             Assert.Equal(0.0, h[6], 9);
             Assert.Equal(0.0, h[7], 9);
-            Assert.Equal(1.0, h[8], 9);
-        }
 
-        [Fact]
-        public void Solve_AlwaysFixesTheLastCoefficientAtOne()
-        {
-            var quad = new (double X, double Y)[] { (10, 20), (300, 40), (280, 200), (30, 190) };
-
-            var h = Homography.Solve(quad, UnitSquare);
-
+            // Also the guard on the fixed last coefficient: Solve assigns H[8] = 1
+            // outright, so losing that assignment leaves a zero here and fails this
+            // test. Verified by deleting the assignment, which failed this case.
             Assert.Equal(1.0, h[8], 9);
         }
 

@@ -3,10 +3,6 @@ Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio Version 17
 VisualStudioVersion = 17.0.31903.59
 MinimumVisualStudioVersion = 10.0.40219.1
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "WinUSBNet", "WinUSBNet\WinUSBNet.csproj", "{D14B4520-9701-4F45-8117-051D2C229F88}"
-EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "GunconUSB", "GunconUSB\GunconUSB.csproj", "{603D7D3B-5C87-4442-9C5C-DA906DF5DEF6}"
-EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Guncon3Console", "Guncon3Console\Guncon3Console.csproj", "{B522DDAF-CA9E-4A39-ACCB-AAFF6EE732DF}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Guncon3.Core", "Guncon3.Core\Guncon3.Core.csproj", "{EB2C9632-3DC6-48E0-B2EB-E2E57E718124}"
@@ -22,14 +18,6 @@ Global
 		HideSolutionNode = FALSE
 	EndGlobalSection
 	GlobalSection(ProjectConfigurationPlatforms) = postSolution
-		{D14B4520-9701-4F45-8117-051D2C229F88}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{D14B4520-9701-4F45-8117-051D2C229F88}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{D14B4520-9701-4F45-8117-051D2C229F88}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{D14B4520-9701-4F45-8117-051D2C229F88}.Release|Any CPU.Build.0 = Release|Any CPU
-		{603D7D3B-5C87-4442-9C5C-DA906DF5DEF6}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{603D7D3B-5C87-4442-9C5C-DA906DF5DEF6}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{603D7D3B-5C87-4442-9C5C-DA906DF5DEF6}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{603D7D3B-5C87-4442-9C5C-DA906DF5DEF6}.Release|Any CPU.Build.0 = Release|Any CPU
 		{B522DDAF-CA9E-4A39-ACCB-AAFF6EE732DF}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
 		{B522DDAF-CA9E-4A39-ACCB-AAFF6EE732DF}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{B522DDAF-CA9E-4A39-ACCB-AAFF6EE732DF}.Release|Any CPU.ActiveCfg = Release|Any CPU

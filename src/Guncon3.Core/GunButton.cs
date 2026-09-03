@@ -2,7 +2,8 @@
 {
     /// <summary>
     /// Logical buttons exposed by the Guncon for mapping to keyboard/mouse.
-    /// Public so both GunconUSB and Guncon3Console can consume it.
+    /// Public so the reader, the feeders and the mapping parser can all name the
+    /// same button.
     /// </summary>
     public enum GunButton
     {
