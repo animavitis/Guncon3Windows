@@ -5,6 +5,7 @@ using System.IO;
 using System.Windows.Forms;
 using WinFormsTimer = System.Windows.Forms.Timer;
 using GunconUSB;
+using Guncon3.Core;
 
 namespace Guncon3Console
 {
@@ -225,9 +226,11 @@ namespace Guncon3Console
 
                 double rx = _reader.State.ABS_X;
                 double ry = _reader.State.ABS_Y;
-                var (px, py) = _rectForCheck.Map(rx, ry);
+                var (nx, ny) = _rectForCheck.MapNormalized(rx, ry);
 
-                DrawCrosshair(g, (float)px, (float)py);
+                DrawCrosshair(g,
+                    (float)(nx * (ClientSize.Width - 1)),
+                    (float)(ny * (ClientSize.Height - 1)));
             }
         }
 

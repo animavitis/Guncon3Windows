@@ -2,11 +2,11 @@ using System;
 
 public static class Homography
 {
-    // Resuelve H tal que [x' y' 1]^T ~ H * [x y 1]^T para 4 correspondencias (DLT)
+    // Solves H such that [x' y' 1]^T ~ H * [x y 1]^T for 4 correspondences (DLT)
     public static double[] Solve((double X,double Y)[] src, (double X,double Y)[] dst)
     {
         if (src.Length != 4 || dst.Length != 4) throw new ArgumentException("Necesito 4 pares (esquinas).");
-        // Construye A*h = b, con h de 8 params (h22=1)
+        // Builds A*h = b, with h of 8 params (h22=1)
         var A = new double[8,8];
         var b = new double[8];
         for (int i=0;i<4;i++)
@@ -33,7 +33,7 @@ public static class Homography
         return (X/Z, Y/Z);
     }
 
-    // Resolución de 8x8 por Gauss (simple y suficiente aquí)
+    // 8x8 solve by Gaussian elimination (simple and good enough here)
     private static double[] SolveLinear8(double[,] A, double[] b)
     {
         int n=8;
@@ -42,17 +42,17 @@ public static class Homography
 
         for(int col=0; col<n; col++)
         {
-            // pivote
+            // pivot
             int piv=col;
             for(int r=col+1;r<n;r++) if (Math.Abs(M[r,col])>Math.Abs(M[piv,col])) piv=r;
             if (Math.Abs(M[piv,col])<1e-12) throw new Exception("Sistema singular.");
             if (piv!=col) for(int c=col;c<=n;c++){ var tmp=M[col,c]; M[col,c]=M[piv,c]; M[piv,c]=tmp; }
 
-            // normalizar fila
+            // normalize row
             double f = M[col,col];
             for(int c=col;c<=n;c++) M[col,c]/=f;
 
-            // eliminar resto
+            // eliminate the rest
             for(int r=0;r<n;r++)
             {
                 if (r==col) continue;

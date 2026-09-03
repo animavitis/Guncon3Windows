@@ -15,7 +15,7 @@ namespace Guncon3Console
                 BtnState[item] = false;
         }
 
-        // Valores que ya usaba el proyecto
+        // Values already used by the project
         public static long ABS_RY { get; set; }
         public static long ABS_RX { get; set; }
         public static long ABS_HAT0Y { get; set; }
@@ -24,17 +24,17 @@ namespace Guncon3Console
         public static short ABS_Y { get; set; }
         public static short ABS_X { get; set; }
 
-        // Indicadores existentes
+        // Existing indicators
         public static bool INDICATOR1 { get; set; }
         public static bool INDICATOR2 { get; set; }
         public static bool IsInsideScreen => !INDICATOR2;
 
         // ============================
-        // NUEVO: alias compatibles
+        // NEW: compatibility aliases
         // ============================
-        // Para calibración queremos leer el "RAW" del dispositivo. En este driver,
-        // lo más cercano son ABS_X / ABS_Y antes de aplicar la transformación,
-        // así que exponemos RAW_X/RAW_Y como alias a esos campos.
+        // For calibration we want to read the device "RAW" values. In this driver
+        // the closest ones are ABS_X / ABS_Y before the transform is applied,
+        // so RAW_X/RAW_Y are exposed as aliases of those fields.
         public static int RAW_X
         {
             get => ABS_X;
@@ -47,14 +47,14 @@ namespace Guncon3Console
             set => ABS_Y = (short)value;
         }
 
-        // Mapear el gatillo a la tabla de botones
+        // Map the trigger onto the button table
         public static bool BTN_TRIGGER
         {
             get => BtnState.TryGetValue(GunButton.Trigger, out var v) && v;
             set => BtnState[GunButton.Trigger] = value;
         }
 
-        // Alias adicionales por si algún código espera estos nombres
+        // Extra aliases in case some code expects these names
         public static bool Trigger
         {
             get => BTN_TRIGGER;

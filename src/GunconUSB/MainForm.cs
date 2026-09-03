@@ -29,7 +29,7 @@ namespace GunconUSB
             InitializeComponent();
             bindEvents();
 
-            // Atajo de teclado para lanzar la calibración desde cualquier sitio
+            // Keyboard shortcut to launch calibration from anywhere
             this.KeyPreview = true;
             this.KeyDown += (s, e) =>
             {
@@ -43,22 +43,22 @@ namespace GunconUSB
 
         private void StartCalibration()
         {
-            // Tamaño de pantalla actual
+            // Current screen size
             var bounds = Screen.PrimaryScreen.Bounds;
             int screenW = bounds.Width;
             int screenH = bounds.Height;
 
-            // Ruta del EXE del calibrador (debe estar junto al EXE principal al ejecutar)
+            // Path to the calibrator EXE (must sit next to the main EXE at run time)
             string exePath = Path.Combine(Application.StartupPath, "Guncon3Calibration.exe");
 
-            // Cierra calibraciones previas si las hubiera
+            // Close any previous calibration
             CalibBridge.Instance?.Dispose();
 
-            // Lanza la calibración (abre la ventana gris con esquina roja)
+            // Launch calibration (opens the gray window with the red corner)
             CalibBridge.Instance = new CalibrationHost(screenW, screenH);
             CalibBridge.Instance.Start(exePath);
 
-            // Aviso visual (opcional)
+            // Visual notice (optional)
             try { this.BeginInvoke((MethodInvoker)(() => this.Text = "Calibrando: dispara 5 puntos (4 esquinas + centro)…")); } catch {}
         }
 
@@ -102,15 +102,15 @@ namespace GunconUSB
 
             UpdateForm();
 
-            // --- Enviar disparo al calibrador si está activo (primer click) ---
+            // --- Send the shot to the calibrator if it is active (first click) ---
             bool trigger = GunState.Trigger;
             if (CalibBridge.Instance != null && trigger && !_prevTrigger)
             {
-                // En este proyecto PointerX/Y son los RAW que nos interesan
+                // In this project PointerX/Y are the RAW values we care about
                 CalibBridge.Instance.OnTriggerRaw(GunState.PointerX, GunState.PointerY);
             }
             _prevTrigger = trigger;
-            // --- fin bloque ---
+            // --- end of block ---
         }
 
         private void Start()
@@ -144,7 +144,7 @@ namespace GunconUSB
             catch { }
         }
 
-        // Resto de handlers y lógica original...
+        // Remaining handlers and original logic...
         // ...
         //            //var cursor = new Cursor(Cursor.Current.Handle);
         //            Cursor.Position = new Point(x, y);

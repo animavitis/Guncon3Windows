@@ -2,11 +2,21 @@
 using System.Globalization;
 using System.IO;
 
-namespace Guncon3Console
+namespace Guncon3.Core
 {
+    /// <summary>Why a calibration file could not be used.</summary>
+    public enum CalibrationLoad
+    {
+        Ok,
+        Missing,
+        Malformed
+    }
+
     /// <summary>
-    /// Calibración rectangular mínima: mapea RAW_X/RAW_Y (rango bruto de la pistola)
-    /// al espacio de pantalla (0..ScreenW-1, 0..ScreenH-1).
+    /// Minimal rectangular calibration: maps RAW_X/RAW_Y (the gun's raw range)
+    /// onto normalized 0..1 screen space via <see cref="MapNormalized"/>.
+    /// ScreenW/ScreenH are persisted metadata only and do not take part in the
+    /// mapping — the caller decides what to scale the normalized result to.
     /// </summary>
     public class RectCalib
     {
@@ -18,7 +28,7 @@ namespace Guncon3Console
         public int ScreenH { get; set; }
         public bool InvertY { get; set; }
 
-        /// <summary>¿Tiene rangos válidos y tamaño de pantalla correcto?</summary>
+        /// <summary>Are the ranges valid and the screen size correct?</summary>
         public bool IsValid()
         {
             return RawMaxX > RawMinX &&
@@ -26,8 +36,12 @@ namespace Guncon3Console
                    ScreenW > 0 && ScreenH > 0;
         }
 
-        /// <summary>Mapea un punto RAW al espacio de pantalla.</summary>
-        public (double X, double Y) Map(double rawX, double rawY)
+        /// <summary>
+        /// Maps a RAW point to normalized 0..1 screen coordinates. ScreenW and ScreenH
+        /// are persisted metadata and deliberately do not take part: the caller decides
+        /// what to scale to.
+        /// </summary>
+        public (double X, double Y) MapNormalized(double rawX, double rawY)
         {
             if (!IsValid())
                 return (0, 0);
@@ -35,25 +49,25 @@ namespace Guncon3Console
             double nx = (rawX - RawMinX) / (RawMaxX - RawMinX);
             double ny = (rawY - RawMinY) / (RawMaxY - RawMinY);
 
-            // clamp
-            if (nx < 0) nx = 0; if (nx > 1) nx = 1;
-            if (ny < 0) ny = 0; if (ny > 1) ny = 1;
+            if (nx < 0) nx = 0; else if (nx > 1) nx = 1;
+            if (ny < 0) ny = 0; else if (ny > 1) ny = 1;
 
             if (InvertY) ny = 1.0 - ny;
 
-            double sx = nx * (ScreenW - 1);
-            double sy = ny * (ScreenH - 1);
-            return (sx, sy);
+            return (nx, ny);
         }
 
-        /// <summary>Guarda en calibration_rect.txt (junto al EXE por defecto).</summary>
+        /// <summary>The file this gun's calibration lives in, next to the executable.</summary>
+        private static string DefaultPath(int gunIndex)
+        {
+            string suffix = gunIndex > 0 ? $"_{gunIndex + 1}" : "";
+            return Path.Combine(AppDomain.CurrentDomain.BaseDirectory, $"calibration_rect{suffix}.txt");
+        }
+
+        /// <summary>Saves to calibration_rect.txt (next to the EXE by default).</summary>
         public void Save(string path = null, int gunIndex = 0)
         {
-            if (path == null)
-            {
-                string suffix = gunIndex > 0 ? $"_{gunIndex + 1}" : "";
-                path = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, $"calibration_rect{suffix}.txt");
-            }
+            path ??= DefaultPath(gunIndex);
 
             using var sw = new StreamWriter(path, false);
             var ci = CultureInfo.InvariantCulture;
@@ -67,14 +81,10 @@ namespace Guncon3Console
             sw.WriteLine("InvertY=" + (InvertY ? "1" : "0"));
         }
 
-        /// <summary>Carga desde calibration_rect.txt. Devuelve null si no existe o está mal.</summary>
+        /// <summary>Loads from calibration_rect.txt. Returns null if missing or malformed.</summary>
         public static RectCalib Load(string path = null, int gunIndex = 0)
         {
-            if (path == null)
-            {
-                string suffix = gunIndex > 0 ? $"_{gunIndex + 1}" : "";
-                path = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, $"calibration_rect{suffix}.txt");
-            }
+            path ??= DefaultPath(gunIndex);
 
             if (!File.Exists(path))
                 return null;
@@ -107,6 +117,31 @@ namespace Guncon3Console
             }
 
             return rc.IsValid() ? rc : null;
+        }
+
+        /// <summary>
+        /// Loads a calibration and says why it failed. A missing file is a normal
+        /// first run; a malformed one is worth telling the user about.
+        /// </summary>
+        public static CalibrationLoad TryLoad(string path, int gunIndex, out RectCalib calibration)
+        {
+            calibration = null;
+
+            path ??= DefaultPath(gunIndex);
+
+            if (!File.Exists(path))
+                return CalibrationLoad.Missing;
+
+            RectCalib loaded;
+            try { loaded = Load(path); }
+            catch (IOException) { return CalibrationLoad.Malformed; }
+            catch (UnauthorizedAccessException) { return CalibrationLoad.Malformed; }
+
+            if (loaded == null)
+                return CalibrationLoad.Malformed;
+
+            calibration = loaded;
+            return CalibrationLoad.Ok;
         }
     }
 }

@@ -1,12 +1,12 @@
-﻿namespace GunconUSB
+﻿namespace Guncon3.Core
 {
     /// <summary>
-    /// Botones lógicos que expone la Guncon para mapear a teclado/ratón.
-    /// Debe ser público para que lo vea Guncon3Console.
+    /// Logical buttons exposed by the Guncon for mapping to keyboard/mouse.
+    /// Must be public so Guncon3Console can see it.
     /// </summary>
     public enum GunButton
     {
-        // Botones físicos
+        // Physical buttons
         Trigger,
         A1,
         A2,
@@ -17,7 +17,7 @@
         AClick,
         BClick,
 
-        // Ejes del stick izquierdo “digitalizados”
+        // "Digitalized" left stick axes
         LUp,
         LDown,
         LLeft,

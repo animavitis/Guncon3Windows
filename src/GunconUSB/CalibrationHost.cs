@@ -37,17 +37,17 @@ public class CalibrationHost : IDisposable
         _pipeServer.DisposeLocalCopyOfClientHandle();
         _pipeWriter = new StreamWriter(_pipeServer, Encoding.ASCII) { AutoFlush = true };
 
-        // En este punto la UI del calibrador muestra la primera esquina.
+        // At this point the calibrator UI shows the first corner.
     }
 
-    /// Llama a esto cuando detectes un disparo válido y tengas las coordenadas RAW (0..max sensor)
+    /// Call this when a valid shot is detected and the RAW coordinates (0..max sensor) are available
     public void OnTriggerRaw(double rawX, double rawY)
     {
         if (_rawSamples.Count >= _expectedPoints) return;
 
         _rawSamples.Add((rawX, rawY));
 
-        // Avanza la diana en el EXE (cualquier byte sirve)
+        // Advance the target in the EXE (any byte will do)
         _pipeWriter.Write('x');
 
         if (_rawSamples.Count == _expectedPoints)
@@ -58,7 +58,7 @@ public class CalibrationHost : IDisposable
 
     private void FinishAndSave()
     {
-        // 1) Puntos destino en pantalla (en píxeles). Ajusta márgenes si quieres dejar “safe area”.
+        // 1) Destination points on screen (in pixels). Adjust the margins to leave a "safe area".
         var dst = new (double X, double Y)[]
         {
             (0, 0),                  // TL
@@ -68,27 +68,27 @@ public class CalibrationHost : IDisposable
             (_screenW / 2.0, _screenH / 2.0) // CENTER
         };
 
-        // 2) Calcula homografía RAW->SCREEN con las 4 esquinas; el centro lo usamos para validar/refinar
+        // 2) Compute the RAW->SCREEN homography from the 4 corners; the center is used to validate/refine
         var H = Homography.Solve(
             new (double X, double Y)[]{ _rawSamples[0], _rawSamples[1], _rawSamples[2], _rawSamples[3] },
             new (double X, double Y)[]{ dst[0],        dst[1],        dst[2],        dst[3] }
         );
 
-        // (Opcional) comprobar error en el punto central:
+        // (Optional) check the error at the center point:
         var centerMapped = Homography.Apply(H, _rawSamples[4].X, _rawSamples[4].Y);
-        // Podrías medir error y, si es alto, avisar al usuario para repetir.
+        // The error could be measured and, if high, the user asked to repeat.
 
-        // 3) Guardar en un .txt sencillo (matriz 3x3 y tamaño de pantalla)
+        // 3) Save to a simple .txt (3x3 matrix and screen size)
         SaveCalibrationTxt("calibration.txt", H, _screenW, _screenH);
 
-        // 4) Cerrar UI del calibrador
+        // 4) Close the calibrator UI
         try { _child?.CloseMainWindow(); } catch {}
         Dispose();
     }
 
     private static void SaveCalibrationTxt(string path, double[] H, int w, int h)
     {
-        // Formato simple; si luego me pasas tu TXT “clásico”, adapto esto a ese formato exacto.
+        // Simple format; if the "classic" TXT shows up later, this can be adapted to that exact format.
         // H: h00 h01 h02; h10 h11 h12; h20 h21 h22
         var sb = new StringBuilder();
         sb.AppendLine("# GunCon3 Calibration (RAW->SCREEN Homography)");

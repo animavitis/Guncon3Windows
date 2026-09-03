@@ -2,7 +2,7 @@
 using System.IO;
 using System.IO.Pipes;
 using System.Windows.Forms;
-using GunconUSB; // para usar GunconReader / GunState que acabas de añadir
+using GunconUSB; // for GunconReader / GunState
 
 namespace Guncon3Calibration
 {
@@ -14,26 +14,26 @@ namespace Guncon3Calibration
             Application.EnableVisualStyles();
             Application.SetCompatibleTextRenderingDefault(false);
 
-            // Creamos la ventana de calibración
+            // Create the calibration window
             var form = new Form1();
 
             if (args != null && args.Length > 0)
             {
-                // === MODO PIPE (como hasta ahora) ===
-                form.SetPipeHandle(args[0]); // esto habilita el TargetNext() por pipe
+                // === PIPE MODE (as before) ===
+                form.SetPipeHandle(args[0]); // enables TargetNext() over the pipe
                 Application.Run(form);
                 return;
             }
 
-            // === MODO STANDALONE (sin argumentos) ===
-            // 1) Arrancar el lector de la pistola
+            // === STANDALONE MODE (no arguments) ===
+            // 1) Start the gun reader
             GunconReader.ProgressChanged += (s, e) =>
             {
-                // Cada vez que llega un paquete, avisamos al formulario
+                // Every time a packet arrives, notify the form
                 form.OnGunReport(GunState.PointerX, GunState.PointerY, GunState.Trigger);
             };
 
-            // 2) Arrancar el lector y abrir la ventana
+            // 2) Start the reader and open the window
             try
             {
                 GunconReader.Start();
@@ -46,7 +46,7 @@ namespace Guncon3Calibration
 
             Application.Run(form);
 
-            // 3) Al cerrar la ventana, paramos
+            // 3) When the window closes, stop
             try { GunconReader.Stop(); } catch { }
         }
     }

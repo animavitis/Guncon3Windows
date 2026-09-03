@@ -1,5 +1,5 @@
 public static class CalibBridge
 {
-    // Lo usaremos para saber si hay una calibración en curso
+    // Used to know whether a calibration is currently in progress
     public static CalibrationHost Instance;
 }

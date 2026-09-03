@@ -348,3 +348,12 @@ MigrationBackup/
 
 # Ionide (cross platform F# VS Code tools) working folder
 .ionide/
+
+# Superpowers subagent-driven-development scratch workspace
+.superpowers/
+
+# macOS Finder metadata
+.DS_Store
+
+# Superpowers SDD workspace (plans, specs, handover notes)
+docs/superpowers/

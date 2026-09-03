@@ -41,7 +41,7 @@ namespace Guncon3Console.TetherScript
             private IntPtr reserved;
         }
 
-        // No lo usamos con marshalling directo; hacemos buffer manual con IntPtr.
+        // Not used with direct marshalling; a manual IntPtr buffer is used instead.
         [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Auto, Pack = 1)]
         public struct SP_DEVICE_INTERFACE_DETAIL_DATA
         {
@@ -66,7 +66,7 @@ namespace Guncon3Console.TetherScript
             public ushort VersionNumber;
         }
 
-        // ===== P/Invoke corregido =====
+        // ===== Fixed P/Invoke =====
 
         [DllImport("hid.dll", CharSet = CharSet.Auto)]
         static extern void HidD_GetHidGuid(out Guid ClassGuid);
@@ -92,7 +92,7 @@ namespace Guncon3Console.TetherScript
             uint memberIndex,
             ref SP_DEVICE_INTERFACE_DATA deviceInterfaceData);
 
-        // 1ª pasada: pedir tamaño (deviceInfoData no usado -> IntPtr.Zero)
+        // 1st pass: ask for the size (deviceInfoData unused -> IntPtr.Zero)
         [DllImport("setupapi.dll", CharSet = CharSet.Auto, SetLastError = true)]
         static extern bool SetupDiGetDeviceInterfaceDetail(
             IntPtr hDevInfo,
@@ -102,7 +102,7 @@ namespace Guncon3Console.TetherScript
             out uint requiredSize,
             IntPtr deviceInfoData);
 
-        // CreateFile con FileAccess/FileShare correctos
+        // CreateFile with the correct FileAccess/FileShare
         [DllImport("kernel32.dll", SetLastError = true, CharSet = CharSet.Auto)]
         static extern SafeFileHandle CreateFile(
             string fileName,
@@ -131,11 +131,9 @@ namespace Guncon3Console.TetherScript
                 HidD_GetHidGuid(out HIDGuid);
                 IntPtr info = SetupDiGetClassDevs(ref HIDGuid, IntPtr.Zero, IntPtr.Zero,
                     (int)(DiGetClassFlags.DIGCF_PRESENT | DiGetClassFlags.DIGCF_DEVICEINTERFACE));
-                if (info == INVALID_HANDLE_VALUE) { Console.WriteLine("[HID] SetupDiGetClassDevs FAIL"); return; }
+                if (info == INVALID_HANDLE_VALUE) { ConsoleLog.Line("[HID] SetupDiGetClassDevs FAIL"); return; }
 
-                Console.ForegroundColor = ConsoleColor.Yellow;
-                Console.WriteLine("[HID] Enumerando HID presentes:");
-                Console.ResetColor();
+                ConsoleLog.Warn("[HID] Enumerating present HID devices:");
 
                 uint i = 0;
                 while (true)
@@ -149,7 +147,7 @@ namespace Guncon3Console.TetherScript
                     IntPtr detail = Marshal.AllocHGlobal((int)needed);
                     try
                     {
-                        // cbSize: 8 en x64, 6 en x86
+                        // cbSize: 8 on x64, 6 on x86
                         Marshal.WriteInt32(detail, IntPtr.Size == 8 ? 8 : 6);
 
                         if (SetupDiGetDeviceInterfaceDetail(info, ref ifData, detail, needed, out needed, IntPtr.Zero))
@@ -202,14 +200,14 @@ namespace Guncon3Console.TetherScript
                 if (foundAny)
                 {
                     uint needed;
-                    // 1ª llamada: tamaño
+                    // 1st call: size
                     SetupDiGetDeviceInterfaceDetail(pnp, ref ifData, IntPtr.Zero, 0, out needed, IntPtr.Zero);
 
                     IntPtr detail = Marshal.AllocHGlobal((int)needed);
                     try
                     {
                         Marshal.WriteInt32(detail, IntPtr.Size == 8 ? 8 : 6);
-                        // 2ª llamada: datos
+                        // 2nd call: data
                         if (SetupDiGetDeviceInterfaceDetail(pnp, ref ifData, detail, needed, out needed, IntPtr.Zero))
                         {
                             IntPtr pPath = new IntPtr(detail.ToInt64() + 4);
@@ -224,7 +222,7 @@ namespace Guncon3Console.TetherScript
                                 var a = new HIDD_ATTRIBUTES { Size = Marshal.SizeOf(typeof(HIDD_ATTRIBUTES)) };
                                 if (HidD_GetAttributes(h, ref a) && a.VendorID == FVendorID && a.ProductID == FProductID)
                                 {
-                                    FDevHandle = h; // nos quedamos el handle válido
+                                    FDevHandle = h; // keep the valid handle
                                     foundMine = true;
                                     FConnected = true;
                                     DoLog("Connected.");

@@ -4,29 +4,29 @@ using System.IO;
 namespace Guncon3Console
 {
     /// <summary>
-    /// Stub de compatibilidad: la calibración real la lleva ahora RectCalib + CalibrationWindow.
-    /// Mantenemos la firma de 'Calibration' para no romper llamadas antiguas.
+    /// Compatibility stub: the real calibration is now handled by RectCalib + CalibrationWindow.
+    /// The 'Calibration' signature is kept so old calls do not break.
     /// </summary>
     public static class Calibration
     {
         /// <summary>
-        /// Indicador compat: si alguien lo consulta no rompe. No lo usamos.
+        /// Compat flag: kept so existing readers do not break. Not used.
         /// </summary>
         public static bool k_coefs_seted = false;
 
         /// <summary>
-        /// Ruta por defecto del archivo de calibración rectangular.
+        /// Default path of the rectangular calibration file.
         /// </summary>
         public static string DefaultPath =>
             Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "calibration_rect.txt");
 
         /// <summary>
-        /// No-op. Dejamos el método por compatibilidad con llamadas antiguas.
+        /// No-op. The method is kept for compatibility with old calls.
         /// </summary>
         public static void Do_Calibration(ref short x, ref short y)
         {
-            // La calibración efectiva ahora se hace con RectCalib.Map en Program.cs
-            // Dejamos esto vacío para compatibilidad.
+            // The effective calibration is now done with RectCalib.Map in Program.cs
+            // Left empty for compatibility.
         }
     }
 }

@@ -1,12 +1,5 @@
 ﻿namespace Guncon3Console.TetherScript
 {
-    public enum MouseButton
-    {
-        Left,
-        Right,
-        Middle
-    }
-
     public enum DriversConst : ushort
     {
         TTC_VENDORID = 0xF00F,

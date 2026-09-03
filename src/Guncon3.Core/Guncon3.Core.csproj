@@ -1,0 +1,10 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <RootNamespace>Guncon3.Core</RootNamespace>
+    <AssemblyName>Guncon3.Core</AssemblyName>
+    <LangVersion>12.0</LangVersion>
+  </PropertyGroup>
+
+</Project>
