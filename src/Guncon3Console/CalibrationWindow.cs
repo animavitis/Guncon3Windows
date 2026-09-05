@@ -1,274 +1,378 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Drawing;
+// SPDX-License-Identifier: GPL-2.0-only
+using System;
+using System.Globalization;
 using System.IO;
+using System.Linq;
+using System.Security;
+using System.Threading;
 using System.Windows.Forms;
 using WinFormsTimer = System.Windows.Forms.Timer;
 using Guncon3.Core;
 
 namespace Guncon3Console
 {
+    /// <summary>
+    /// Full-screen calibration for one gun. The state lives in
+    /// <see cref="CalibrationSession"/>, the picture in <see cref="CalibrationRenderer"/>,
+    /// the key and button meanings in <see cref="CalibrationInput"/>. This form reads the
+    /// gun on its own thread, turns edges into actions, and writes the file when the user
+    /// accepts. Nothing is saved until the check phase is accepted, so cancelling at any
+    /// point leaves the previous calibration exactly as it was.
+    /// </summary>
     public class CalibrationWindow : Form
     {
-        private readonly WinFormsTimer _poll;
-        private readonly List<(double X, double Y)> _rawPoints = new();
-        private PointF[] _targets = Array.Empty<PointF>();
-        private int _idx = 0;
-        private bool _prevTrig = false;
-        private bool _prevA1 = false, _prevC2 = false;
-        private bool _checking = false;
-        private CalibrationFile _fileForCheck = null;
+        // Dictionary enumeration order is incidental in .NET; nothing here relies on the
+        // order these buttons are checked in, only on each being checked once.
+        private static readonly GunButton[] WatchedButtons = CalibrationInput.ButtonActions.Keys.ToArray();
 
+        private readonly WinFormsTimer _poll;
         private readonly GunconReader _reader;
         private readonly int _gunIndex;
-        private readonly CalibrationMode _mode;
+        private readonly CalibrationSession _session;
+        private readonly Screen[] _screens;
+        private readonly CalibrationRenderer _renderer;
 
-        public CalibrationWindow(GunconReader reader, int gunIndex = 0, CalibrationMode mode = CalibrationMode.Rect)
+        // The read thread publishes here; the UI thread consumes the latest.
+        private readonly CancellationTokenSource _readCts = new();
+        private readonly Thread _readThread;
+        private GunSample _latest = GunSample.None;
+
+        private GunSample _previous = GunSample.None;
+        private bool _primed;
+        private bool _showRaw;
+        private FrameState _lastPainted;
+        private bool _disposed;
+
+        /// <summary>True once a calibration was written. False on cancel.</summary>
+        public bool Saved { get; private set; }
+
+        /// <summary>
+        /// True once the read thread has actually stopped (joined within Dispose's
+        /// timeout). False means it may still be reading the gun's USB pipe, which the
+        /// caller must then not hand to anyone else.
+        /// </summary>
+        public bool ReadThreadStopped { get; private set; } = true;
+
+        /// <summary>The mapping the user was looking at when they accepted.</summary>
+        public CalibrationMode ChosenMode => _session.Mode;
+
+        public CalibrationWindow(GunconReader reader, int gunIndex = 0,
+                                 CalibrationMode mode = CalibrationMode.Rect, int initialScreen = 0)
         {
             _reader = reader ?? throw new ArgumentNullException(nameof(reader));
             _gunIndex = gunIndex;
-            _mode = mode;
+
+            _screens = Screen.AllScreens;
+            if (_screens.Length == 0) _screens = new[] { Screen.PrimaryScreen };
+
+            var placements = new ScreenPlacement[_screens.Length];
+            for (int i = 0; i < _screens.Length; i++)
+                placements[i] = Screens.ToPlacement(_screens[i].Bounds);
+
+            _session = new CalibrationSession(placements, initialScreen, mode);
 
             FormBorderStyle = FormBorderStyle.None;
-            WindowState = FormWindowState.Maximized;
-            Bounds = Screen.PrimaryScreen.Bounds;
+            StartPosition = FormStartPosition.Manual;
             TopMost = true;
             KeyPreview = true;
             DoubleBuffered = true;
-            BackColor = Color.DimGray;
-            ForeColor = Color.White;
+            BackColor = System.Drawing.Color.FromArgb(40, 40, 40);
+            ForeColor = System.Drawing.Color.White;
+            ApplyScreenBounds();
 
-            Shown += (_, __) => { try { Cursor.Hide(); } catch { } };
-            FormClosed += (_, __) => { try { Cursor.Show(); } catch { } };
+            _renderer = new CalibrationRenderer(ClientSize);
 
-            KeyDown += CalibrationWindow_KeyDown;
-            MouseDown += CalibrationWindow_MouseDown;
+            Shown += (_, __) => { try { Cursor.Hide(); } catch (InvalidOperationException) { } Activate(); };
+            FormClosed += (_, __) => { try { Cursor.Show(); } catch (InvalidOperationException) { } };
+
+            KeyDown += OnKeyDown;
 
             SetStyle(ControlStyles.AllPaintingInWmPaint | ControlStyles.OptimizedDoubleBuffer | ControlStyles.UserPaint, true);
             UpdateStyles();
 
-            RebuildTargets();
-            Resize += (_, __) => { RebuildTargets(); Invalidate(); };
+            _readThread = new Thread(ReadLoop) { IsBackground = true, Name = $"calibration-read-{gunIndex + 1}" };
+            _readThread.Start();
 
             _poll = new WinFormsTimer { Interval = 16 };
             _poll.Tick += PollTick;
             _poll.Start();
         }
 
-        private void CalibrationWindow_MouseDown(object sender, MouseEventArgs e)
+        // ----------------------------------------------------------- lifecycle
+
+        /// <summary>
+        /// Stops the read thread and the poll timer on every exit path. The timer is
+        /// rooted by its own native window, so it would keep ticking after Close()
+        /// otherwise.
+        /// </summary>
+        protected override void OnFormClosing(FormClosingEventArgs e)
         {
-            if (e.Button == MouseButtons.Left && !_checking)
-                CapturePointSafe();
+            _poll.Stop();
+            _readCts.Cancel();
+            base.OnFormClosing(e);
         }
 
-        private void CalibrationWindow_KeyDown(object sender, KeyEventArgs e)
+        protected override void Dispose(bool disposing)
         {
-            if (e.KeyCode == Keys.Escape)
-                Close();
-            else if (e.KeyCode == Keys.Space && !_checking)
-                CapturePointSafe();
+            // WinForms disposes a closed form itself; the caller's own `using` then
+            // disposes it again. Without this guard the second pass calls
+            // _readCts.Cancel() on a CancellationTokenSource already disposed.
+            if (disposing && !_disposed)
+            {
+                _disposed = true;
+
+                _poll.Stop();
+                _readCts.Cancel();
+                // Bounded by GunconReader's transfer timeout (100 ms) when the driver
+                // honoured it; a refused timeout policy can hold the thread until the
+                // gun answers, which is why this join has a ceiling too.
+                bool joined = _readThread.Join(TimeSpan.FromMilliseconds(500));
+                _poll.Dispose();
+                ReadThreadStopped = joined;
+                // An abandoned thread (join timed out) may still be sitting in
+                // token.WaitHandle.WaitOne; disposing under it would throw. Leak the CTS
+                // in that case instead — ReadLoop's own catch-all keeps that from ever
+                // escaping.
+                if (joined)
+                {
+                    _readCts.Dispose();
+                }
+                else
+                {
+                    Log.Warn($"[Gun {_gunIndex + 1} Calibration] the gun read thread did not stop within 500 ms; "
+                                   + "the gun is left idle — restart the program to use it again.");
+                }
+                _renderer.Dispose();
+            }
+            base.Dispose(disposing);
         }
 
-        private void CapturePointSafe()
+        protected override void OnClientSizeChanged(EventArgs e)
         {
-            try { _reader.Read(); } catch { }
+            base.OnClientSizeChanged(e);
+            _renderer?.Resize(ClientSize);
+        }
 
+        /// <summary>
+        /// Under PerMonitorV2, moving a borderless form to a monitor with another DPI
+        /// makes WinForms apply a suggested rectangle scaled by the DPI ratio, so
+        /// targets land off-screen. Refuse the suggestion and re-assert the monitor's
+        /// physical bounds once the message has been processed.
+        /// </summary>
+        protected override void OnDpiChanged(DpiChangedEventArgs e)
+        {
+            e.Cancel = true;
+            BeginInvoke(ApplyScreenBounds);
+        }
+
+        private void ApplyScreenBounds()
+        {
+            Bounds = _screens[_session.ScreenIndex].Bounds;
+        }
+
+        // ----------------------------------------------------------- read thread
+
+        /// <summary>
+        /// Loops on the blocking USB read and publishes each outcome; never touches the
+        /// form. A Disconnected result is published too, so the UI can say so.
+        /// </summary>
+        private void ReadLoop()
+        {
+            var token = _readCts.Token;
             try
             {
-                double rawX = _reader.State.ABS_X;
-                double rawY = _reader.State.ABS_Y;
-                CapturePoint(rawX, rawY);
+                while (!token.IsCancellationRequested)
+                {
+                    ReadResult result;
+                    try
+                    {
+                        result = _reader.Read();
+                    }
+                    catch (Exception ex)
+                    {
+                        DumpDiagnostics("cal_read_error.txt", ex, includePoints: false);
+                        result = ReadResult.Disconnected;
+                    }
+
+                    if (result == ReadResult.BadPacket) continue;   // keep the last good sample
+
+                    Volatile.Write(ref _latest, GunSample.From(_reader.State, result));
+
+                    if (result == ReadResult.Disconnected)
+                        token.WaitHandle.WaitOne(250);   // no point hammering a gone device
+                }
             }
-            catch (Exception ex) { DumpError("cal_capture_error.txt", ex); }
+            catch (Exception ex)
+            {
+                // Nothing this thread does may ever reach the default handler — that
+                // takes the whole process down. This also covers an abandoned thread
+                // (Dispose's join timed out) finding the CTS disposed out from under it:
+                // log and exit instead of crashing.
+                Log.Warn($"[Gun {_gunIndex + 1} Calibration] read thread stopped: {ex.Message}");
+            }
+        }
+
+        // ---------------------------------------------------------------- input
+
+        private void OnKeyDown(object sender, KeyEventArgs e)
+        {
+            if (e.KeyCode == Keys.D)
+            {
+                _showRaw = !_showRaw;
+                Invalidate();
+                return;
+            }
+
+            if (CalibrationInput.KeyActions.TryGetValue(e.KeyCode, out var action))
+                Perform(action);
         }
 
         private void PollTick(object sender, EventArgs e)
         {
-            try { _reader.Read(); } catch { }
+            var sample = Volatile.Read(ref _latest);
 
-            if (_checking)
+            // The read thread has not published anything yet; priming edges from
+            // GunSample.None (all buttons false) would make a trigger already held at
+            // F12 look like a fresh press once the real sample arrives.
+            if (sample == GunSample.None) return;
+
+            // The first tick only records what is held, so a trigger still down from
+            // the F12 press or a game does not shoot the first target by itself.
+            if (_primed && sample != _previous)
             {
-                bool a1 = _reader.State.BtnState.TryGetValue(GunButton.A1, out var v1) && v1;
-                bool c2 = _reader.State.BtnState.TryGetValue(GunButton.C2, out var v2) && v2;
+                foreach (var b in WatchedButtons)
+                {
+                    bool pressed = sample.Buttons[(int)b] && !_previous.Buttons[(int)b];
+                    if (!pressed) continue;
 
-                if (!_prevA1 && a1)
-                {
-                    _checking = false;
-                    _fileForCheck = null;
-                    _rawPoints.Clear();
-                    _idx = 0;
-                    RebuildTargets();
+                    Perform(CalibrationInput.ButtonActions[b]);
+                    // Accept or Cancel may have just closed the form; a later button in
+                    // this same tick's loop must not go on to act on a closed form.
+                    if (IsDisposed || !Visible) return;
                 }
-                else if (!_prevC2 && c2)
-                {
+            }
+            _previous = sample;
+            _primed = true;
+
+            var frame = CurrentFrame();
+            if (frame.Phase == CalibrationPhase.Capturing || frame != _lastPainted)
+                Invalidate();
+        }
+
+        /// <summary>
+        /// Applies one action to the session and does the two things the session
+        /// cannot: save and close.
+        /// </summary>
+        private void Perform(CalibrationAction action)
+        {
+            var sample = Volatile.Read(ref _latest);
+
+            // A gun that is gone, or has not been read yet at all, cannot shoot;
+            // everything else (restart, cancel, screen change, accept of an
+            // already-captured candidate) still works regardless of the sample.
+            if (action == CalibrationAction.Shoot && (sample == GunSample.None || sample.Result == ReadResult.Disconnected))
+                return;
+
+            bool valid;
+            try
+            {
+                valid = _session.Apply(action, sample.RawX, sample.RawY);
+            }
+            catch (Exception ex)
+            {
+                DumpDiagnostics("cal_capture_error.txt", ex);
+                return;
+            }
+
+            if (!valid) return;
+
+            switch (action)
+            {
+                case CalibrationAction.Cancel:
                     Close();
                     return;
-                }
-
-                _prevA1 = a1;
-                _prevC2 = c2;
-            }
-            else
-            {
-                bool t = _reader.State.BtnState.TryGetValue(GunButton.Trigger, out var trig) && trig;
-                if (!_prevTrig && t)
-                {
-                    CapturePoint(_reader.State.ABS_X, _reader.State.ABS_Y);
-                }
-                _prevTrig = t;
+                case CalibrationAction.Accept:
+                    AcceptAndSave();
+                    return;
+                case CalibrationAction.PreviousScreen:
+                case CalibrationAction.NextScreen:
+                    ApplyScreenBounds();
+                    break;
             }
 
             Invalidate();
         }
 
-        private void RebuildTargets()
+        private void AcceptAndSave()
         {
-            int W = Math.Max(1, ClientSize.Width);
-            int H = Math.Max(1, ClientSize.Height);
-            _targets = new[]
-            {
-                new PointF(0,0),
-                new PointF(W-1,0),
-                new PointF(W-1,H-1),
-                new PointF(0,H-1),
-                new PointF(W/2f,H/2f)
-            };
-            _idx = 0;
-        }
+            var file = _session.Accept();
+            if (file == null) return;
 
-        private void CapturePoint(double rawX, double rawY)
-        {
-            if (_rawPoints.Count >= 5) return;
-            _rawPoints.Add((rawX, rawY));
-            _idx++;
-
-            if (_idx < 5) { Invalidate(); return; }
-
-            FinishAndSave();
-        }
-
-        private void FinishAndSave()
-        {
+            _poll.Stop();
             try
             {
-                _poll.Stop();
-
-                int W = Screen.PrimaryScreen.Bounds.Width;
-                int H = Screen.PrimaryScreen.Bounds.Height;
-
-                var file = CalibrationFile.FromCapture(_rawPoints, W, H);
                 file.Save(gunIndex: _gunIndex);
-
-                _fileForCheck = file;
-                _checking = true;
-                _poll.Start();
+                Saved = true;
+                Close();
             }
             catch (Exception ex)
             {
-                DumpRaw("cal_raw_dump.txt", ex);
-                MessageBox.Show("Calibration error: " + ex.Message, "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
-                Close();
+                DumpDiagnostics("cal_save_error.txt", ex);
+                try { Cursor.Show(); } catch (InvalidOperationException) { }
+                MessageBox.Show(this, "Calibration could not be saved: " + ex.Message, "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                try { Cursor.Hide(); } catch (InvalidOperationException) { }
+                _poll.Start();
             }
+        }
+
+        // ------------------------------------------------------------- drawing
+
+        private FrameState CurrentFrame()
+        {
+            var s = Volatile.Read(ref _latest);
+            return new FrameState(
+                _session.Phase, _session.NextTarget, _session.CapturedPoints.Count, _session.Candidate,
+                _session.Mode, _session.ScreenIndex, _session.ScreenCount, _session.Screen,
+                s.RawX, s.RawY, s.InsideScreen, s.Buttons[(int)GunButton.Trigger],
+                _session.LastCaptureRejected, _showRaw, _gunIndex,
+                Disconnected: s.Result == ReadResult.Disconnected);
         }
 
         protected override void OnPaint(PaintEventArgs e)
         {
             base.OnPaint(e);
-            var g = e.Graphics;
-            g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
-
-            using var f = new Font(FontFamily.GenericSansSerif, 18f, FontStyle.Bold);
-            using var b = new SolidBrush(Color.White);
-
-            string gunLabel = _gunIndex > 0 ? $" [Gun {_gunIndex + 1}]" : " [Gun 1]";
-
-            if (!_checking)
-            {
-                g.DrawString($"SHOOT THE MARK (5 POINTS){gunLabel}. ESC = cancel / Space = capture", f, b, new PointF(20, 20));
-                g.DrawString("Progress: " + Math.Min(_idx + 1, 5) + "/5", f, b, new PointF(20, 46));
-
-                string rawLine = "RAW: X=0 Y=0 TRIG=off";
-                try
-                {
-                    double px = _reader.State.ABS_X;
-                    double py = _reader.State.ABS_Y;
-                    string trig = (_reader.State.BtnState.TryGetValue(GunButton.Trigger, out var t) && t) ? "ON" : "off";
-                    rawLine = $"RAW: X={px} Y={py} TRIG={trig}";
-                }
-                catch { }
-
-                g.DrawString(rawLine, f, b, new PointF(20, 72));
-
-                int k = Math.Min(_idx, _targets.Length - 1);
-                DrawTarget(g, k, _targets[k], ClientSize);
-            }
-            else
-            {
-                g.DrawString($"CHECK CALIBRATION{gunLabel} — A1 = recalibrate | C2 = save & exit", f, b, new PointF(20, 20));
-
-                double rx = _reader.State.ABS_X;
-                double ry = _reader.State.ABS_Y;
-                var (nx, ny) = _fileForCheck.MapNormalized(rx, ry, _mode);
-
-                DrawCrosshair(g,
-                    (float)(nx * (ClientSize.Width - 1)),
-                    (float)(ny * (ClientSize.Height - 1)));
-            }
+            _lastPainted = CurrentFrame();
+            _renderer.Paint(e.Graphics, in _lastPainted);
         }
 
-        private static void DrawTarget(Graphics g, int k, PointF p, Size client)
-        {
-            using var red = new SolidBrush(Color.Red);
-            using var penW = new Pen(Color.White, 3f);
+        // ------------------------------------------------------------ diagnostics
 
-            float tri = Math.Min(client.Width, client.Height) * 0.05f;
-            if (k <= 3)
-            {
-                PointF a, b2, c;
-                if (k == 0) { a = new(p.X, p.Y); b2 = new(p.X + tri, p.Y); c = new(p.X, p.Y + tri); }
-                else if (k == 1) { a = new(p.X, p.Y); b2 = new(p.X - tri, p.Y); c = new(p.X, p.Y + tri); }
-                else if (k == 2) { a = new(p.X, p.Y); b2 = new(p.X - tri, p.Y); c = new(p.X, p.Y - tri); }
-                else { a = new(p.X, p.Y); b2 = new(p.X + tri, p.Y); c = new(p.X, p.Y - tri); }
-                g.FillPolygon(red, new[] { a, b2, c });
-                g.DrawPolygon(penW, new[] { a, b2, c });
-            }
-            else
-            {
-                float r = tri * 0.9f;
-                g.DrawEllipse(penW, p.X - r, p.Y - r, r * 2, r * 2);
-                g.DrawLine(penW, p.X - r * 1.7f, p.Y, p.X + r * 1.7f, p.Y);
-                g.DrawLine(penW, p.X, p.Y - r * 1.7f, p.X, p.Y + r * 1.7f);
-            }
-        }
-
-        private static void DrawCrosshair(Graphics g, float x, float y)
+        /// <summary>
+        /// Writes the exception, and (except from the read thread) the points captured
+        /// so far, next to the exe. <see cref="CalibrationSession.CapturedPoints"/> is a
+        /// live view over a list the UI thread mutates on every shot, so the read
+        /// thread's call site passes <paramref name="includePoints"/>: false to avoid
+        /// racing it.
+        /// </summary>
+        private void DumpDiagnostics(string file, Exception ex, bool includePoints = true)
         {
-            using var pen = new Pen(Color.White, 2f);
-            const int arm = 20;
-            const int gap = 4;
-            g.DrawLine(pen, x - (arm + gap), y, x - gap, y);
-            g.DrawLine(pen, x + gap, y, x + (arm + gap), y);
-            g.DrawLine(pen, x, y - (arm + gap), x, y - gap);
-            g.DrawLine(pen, x, y + gap, x, y + (arm + gap));
-        }
-
-        private void DumpError(string file, Exception ex)
-        {
-            try { File.WriteAllText(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, file), ex.ToString()); } catch { }
-        }
-
-        private void DumpRaw(string file, Exception ex)
-        {
+            string path = Path.Combine(AppInfo.BaseDirectory, file);
             try
             {
-                string dump = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, file);
-                using var sw = new StreamWriter(dump, false);
-                sw.WriteLine("# Calibration error: " + ex.Message);
-                sw.WriteLine("# RAW:");
-                foreach (var p in _rawPoints)
-                    sw.WriteLine($"{p.X},{p.Y}");
+                using var sw = new StreamWriter(path, false);
+                sw.WriteLine("# Calibration error: " + ex);
+                if (includePoints)
+                {
+                    sw.WriteLine("# captured raw points:");
+                    foreach (var p in _session.CapturedPoints)
+                        sw.WriteLine(string.Create(CultureInfo.InvariantCulture, $"{p.X},{p.Y}"));
+                }
+                Log.Warn($"[Gun {_gunIndex + 1} Calibration] diagnostics written to {path}");
             }
-            catch { }
+            catch (Exception dumpEx) when (dumpEx is IOException or UnauthorizedAccessException or SecurityException)
+            {
+                Log.Warn($"[Gun {_gunIndex + 1} Calibration] could not write {path}: {dumpEx.Message}");
+            }
         }
     }
 }

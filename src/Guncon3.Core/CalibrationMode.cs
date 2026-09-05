@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-only
 namespace Guncon3.Core
 {
     /// <summary>Which of a calibration's two mappings to aim through.</summary>

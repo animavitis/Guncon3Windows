@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-only
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -10,6 +11,8 @@ namespace Guncon3.Core.Tests
     public class GunconDecoderTests
     {
         private const string GoldenPath = "data/decode-golden.txt";
+        private const string CapturePath = "data/packets.txt";
+        private const string CaptureGoldenPath = "data/packets-decoded.txt";
 
         /// <summary>
         /// Builds a frame whose checksum passes, by solving the a_sum chain for data[0].
@@ -38,79 +41,61 @@ namespace Guncon3.Core.Tests
                 yield return MakeValidFrame(rng);
         }
 
-        [Fact]
-        public void Decode_MatchesGolden()
+        /// <summary>One golden line: the frame in hex, a space, the 13 decoded bytes in hex or NULL.</summary>
+        private static string GoldenLine(byte[] frame)
         {
-            var produced = Corpus()
-                .Select(f => Convert.ToHexString(f) + " " + (GunconDecoder.Decode(f) is List<byte> r ? Convert.ToHexString(r.ToArray()) : "NULL"))
-                .ToArray();
+            var decoded = new byte[13];
+            return Convert.ToHexString(frame) + " "
+                 + (GunconDecoder.TryDecode(frame, decoded) ? Convert.ToHexString(decoded) : "NULL");
+        }
 
-            if (!File.Exists(GoldenPath))
-            {
-                Directory.CreateDirectory(Path.GetDirectoryName(GoldenPath));
-                File.WriteAllLines(GoldenPath, produced);
-                Assert.Fail($"Golden file did not exist; wrote {produced.Length} lines to {GoldenPath}. Inspect it, commit it, and re-run.");
-            }
+        [Fact]
+        public void TryDecode_MatchesTheSyntheticGolden()
+        {
+            var produced = Corpus().Select(GoldenLine).ToArray();
 
+            Assert.True(File.Exists(GoldenPath), $"{GoldenPath} is missing; it is committed test data.");
             Assert.Equal(File.ReadAllLines(GoldenPath), produced);
         }
 
         [Fact]
-        public void Decode_ProducesThirteenBytesForValidFrames()
+        public void TryDecode_DecodesEveryRealCapturedFrame()
         {
-            foreach (var frame in Corpus())
-            {
-                var decoded = GunconDecoder.Decode(frame);
-                Assert.NotNull(decoded);
-                Assert.Equal(13, decoded.Count);
-            }
+            Assert.True(File.Exists(CapturePath), $"{CapturePath} is missing; it is committed test data.");
+
+            var frames = File.ReadAllLines(CapturePath).Where(l => l.Length == 30).Select(Convert.FromHexString).ToArray();
+            Assert.Equal(500, frames.Length);
+
+            var decoded = new byte[13];
+            var rejected = new List<int>();
+            for (int i = 0; i < frames.Length; i++)
+                if (!GunconDecoder.TryDecode(frames[i], decoded)) rejected.Add(i);
+
+            Assert.True(rejected.Count == 0,
+                $"{rejected.Count} of {frames.Length} real frames failed the checksum; first at line {rejected.FirstOrDefault() + 1}");
         }
 
         [Fact]
-        public void Decode_ReturnsNullOnChecksumFailure()
+        public void TryDecode_MatchesTheRealCaptureGolden()
+        {
+            var frames = File.ReadAllLines(CapturePath).Where(l => l.Length == 30).Select(Convert.FromHexString);
+            var produced = frames.Select(GoldenLine).ToArray();
+
+            if (!File.Exists(CaptureGoldenPath))
+            {
+                File.WriteAllLines(CaptureGoldenPath, produced);
+                Assert.Fail($"Golden file did not exist; wrote {produced.Length} lines to {CaptureGoldenPath}. Inspect it, copy it into tests/Guncon3.Core.Tests/data/, commit it, and re-run.");
+            }
+
+            Assert.Equal(File.ReadAllLines(CaptureGoldenPath), produced);
+        }
+
+        [Fact]
+        public void TryDecode_RejectsAChecksumFailure()
         {
             var frame = MakeValidFrame(new Random(1));
             frame[0] ^= 0xFF;
-            Assert.Null(GunconDecoder.Decode(frame));
-        }
-
-        [Fact]
-        public void Decode_ReturnsEmptyForWrongLength()
-        {
-            Assert.Empty(GunconDecoder.Decode(new byte[14]));
-            Assert.Empty(GunconDecoder.Decode(null));
-        }
-
-        [Fact]
-        public void Decode_HandlesRealCapturedFrames()
-        {
-            const string path = "data/packets.txt";
-            if (!File.Exists(path)) return;   // capture is optional
-
-            int decoded = 0, rejected = 0;
-            foreach (var line in File.ReadAllLines(path).Where(l => l.Length == 30))
-            {
-                var result = GunconDecoder.Decode(Convert.FromHexString(line));
-                if (result == null) rejected++;
-                else { Assert.Equal(13, result.Count); decoded++; }
-            }
-
-            Assert.True(decoded > 0, "no captured frame decoded");
-            Assert.True(rejected < decoded, $"more frames rejected ({rejected}) than decoded ({decoded})");
-        }
-
-        [Fact]
-        public void TryDecode_AgreesWithDecode()
-        {
-            var destination = new byte[13];
-
-            foreach (var frame in Corpus())
-            {
-                var expected = GunconDecoder.Decode(frame);
-
-                Assert.True(GunconDecoder.TryDecode(frame, destination));
-                Assert.Equal(expected.ToArray(), destination);
-            }
+            Assert.False(GunconDecoder.TryDecode(frame, new byte[13]));
         }
 
         [Fact]
@@ -119,11 +104,19 @@ namespace Guncon3.Core.Tests
             var destination = new byte[13];
 
             Assert.False(GunconDecoder.TryDecode(new byte[14], destination));
+            Assert.False(GunconDecoder.TryDecode(new byte[16], destination));
             Assert.False(GunconDecoder.TryDecode(MakeValidFrame(new Random(2)), new byte[12]));
+        }
 
+        [Fact]
+        public void TryDecode_LeavesTheDestinationUntouchedWhenItRejects()
+        {
+            var destination = Enumerable.Repeat((byte)0xAA, 13).ToArray();
             var broken = MakeValidFrame(new Random(3));
             broken[0] ^= 0xFF;
+
             Assert.False(GunconDecoder.TryDecode(broken, destination));
+            Assert.All(destination, b => Assert.Equal(0xAA, b));
         }
 
         [Fact]

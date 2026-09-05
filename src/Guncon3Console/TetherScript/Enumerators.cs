@@ -1,4 +1,8 @@
-﻿namespace Guncon3Console.TetherScript
+﻿// SPDX-License-Identifier: GPL-2.0-only
+// CA1707: these are the TetherScript SDK's own constant names (Drivers.cs); kept verbatim so they can be
+// grepped against the vendor kit.
+#pragma warning disable CA1707
+namespace Guncon3Console.TetherScript
 {
     public enum DriversConst : ushort
     {

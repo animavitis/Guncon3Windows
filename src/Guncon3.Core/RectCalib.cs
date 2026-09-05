@@ -1,20 +1,18 @@
+// SPDX-License-Identifier: GPL-2.0-only
 namespace Guncon3.Core
 {
-    /// <summary>
-    /// Minimal rectangular calibration: maps RAW_X/RAW_Y (the gun's raw range)
-    /// onto normalized 0..1 screen space via <see cref="MapNormalized"/>.
-    /// ScreenW/ScreenH are persisted metadata only and do not take part in the
-    /// mapping — the caller decides what to scale the normalized result to.
-    /// </summary>
-    public class RectCalib
+    /// <summary>Minimal rectangular calibration: maps the gun's raw coordinates (0-65535) onto normalized 0..1
+    /// screen space via <see cref="MapNormalized"/>. ScreenW/ScreenH are persisted metadata only and do not
+    /// take part in the mapping.</summary>
+    public sealed class RectCalib
     {
-        public double RawMinX { get; set; }
-        public double RawMaxX { get; set; }
-        public double RawMinY { get; set; }
-        public double RawMaxY { get; set; }
-        public int ScreenW { get; set; }
-        public int ScreenH { get; set; }
-        public bool InvertY { get; set; }
+        public double RawMinX { get; init; }
+        public double RawMaxX { get; init; }
+        public double RawMinY { get; init; }
+        public double RawMaxY { get; init; }
+        public int ScreenW { get; init; }
+        public int ScreenH { get; init; }
+        public bool InvertY { get; init; }
 
         /// <summary>Are the ranges valid and the screen size correct?</summary>
         public bool IsValid()
@@ -26,11 +24,7 @@ namespace Guncon3.Core
                    ScreenW > 0 && ScreenH > 0;
         }
 
-        /// <summary>
-        /// Maps a RAW point to normalized 0..1 screen coordinates. ScreenW and ScreenH
-        /// are persisted metadata and deliberately do not take part: the caller decides
-        /// what to scale to.
-        /// </summary>
+        /// <summary>Maps a raw point to normalized 0..1 screen coordinates.</summary>
         public (double X, double Y) MapNormalized(double rawX, double rawY)
         {
             if (!IsValid())

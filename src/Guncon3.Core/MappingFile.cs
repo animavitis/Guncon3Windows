@@ -1,5 +1,7 @@
+// SPDX-License-Identifier: GPL-2.0-only
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.IO;
 
 namespace Guncon3.Core
@@ -46,11 +48,9 @@ namespace Guncon3.Core
         }
     }
 
-    /// <summary>
-    /// Parses mapping.txt. Every line is DEVICE.COMMAND = GUNCOMMAND, for example
-    /// "KEYBOARD.30 = C1" or "MOUSE.Left = Trigger". Blank lines and lines starting
-    /// with '#' are ignored. Rejected lines never throw; they produce a diagnostic.
-    /// </summary>
+    /// <summary>Parses mapping.txt. Every line is DEVICE.COMMAND = GUNCOMMAND, for example "KEYBOARD.30 = C1"
+    /// or "MOUSE.Left = Trigger". Blank lines and lines starting with '#' are ignored. Rejected lines never
+    /// throw; they produce a diagnostic.</summary>
     public static class MappingFile
     {
         public static GunMapping Load(string path)
@@ -76,7 +76,7 @@ namespace Guncon3.Core
                 lineNo++;
 
                 var line = raw?.Trim();
-                if (string.IsNullOrWhiteSpace(line) || line.StartsWith("#"))
+                if (string.IsNullOrWhiteSpace(line) || line.StartsWith('#'))
                     continue;
 
                 var eq = line.IndexOf('=');
@@ -117,10 +117,12 @@ namespace Guncon3.Core
                         break;
 
                     case "KEYBOARD":
-                        if (byte.TryParse(cmd, out var code))
-                            keyboard[gunBtn] = code;
-                        else
+                        if (!byte.TryParse(cmd, NumberStyles.None, CultureInfo.InvariantCulture, out var code))
                             diagnostics.Add($"Line {lineNo}: not a keycode: {cmd}");
+                        else if (!KeyCodeTable.IsValid(code))
+                            diagnostics.Add($"Line {lineNo}: unknown keycode: {cmd} (run with the 'keys' argument for the list)");
+                        else
+                            keyboard[gunBtn] = code;
                         break;
 
                     default:

@@ -1,20 +1,18 @@
+// SPDX-License-Identifier: GPL-2.0-only
 using System;
 using System.Collections.Generic;
 
 namespace Guncon3.Core
 {
-    /// <summary>
-    /// Builds the six-slot HID keyboard key set from a mapping and a pressed-button
-    /// state, and reports whether it changed since the previous call. Allocation-free
-    /// after construction.
-    /// </summary>
+    /// <summary>Builds the six-slot HID keyboard key set from a mapping and a pressed-button state, and reports
+    /// whether it changed since the previous call. Allocation-free after construction.</summary>
     public sealed class KeySetBuilder
     {
         public const int MaxKeys = 6;
 
         private readonly byte[] _current = new byte[MaxKeys];
         private readonly byte[] _previous = new byte[MaxKeys];
-        private int _previousCount = 0;
+        private int _previousCount;
 
         public int Count { get; private set; }
 
@@ -30,17 +28,21 @@ namespace Guncon3.Core
             _previousCount = -1;
         }
 
-        /// <summary>Returns true when the resulting key set differs from the previous call.</summary>
+        /// <summary>Returns true when the resulting key set differs from the previous call. <paramref
+        /// name="pressed"/> is indexed by <c>(int)GunButton</c>.</summary>
         public bool Update(
             ReadOnlySpan<KeyValuePair<GunButton, byte>> mapping,
-            Dictionary<GunButton, bool> pressed)
+            ReadOnlySpan<bool> pressed)
         {
+            if (pressed.Length < GunButtons.Count)
+                throw new ArgumentException($"pressed has {pressed.Length} entries; {GunButtons.Count} buttons exist.", nameof(pressed));
+
             int count = 0;
 
             foreach (var entry in mapping)
             {
                 if (count >= MaxKeys) break;
-                if (!pressed.TryGetValue(entry.Key, out bool down) || !down) continue;
+                if (!pressed[(int)entry.Key]) continue;
 
                 byte code = entry.Value;
 

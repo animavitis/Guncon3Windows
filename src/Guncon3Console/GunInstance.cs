@@ -1,16 +1,13 @@
+// SPDX-License-Identifier: GPL-2.0-only
 using System.Threading;
 using Guncon3Console.TetherScript;
 
 namespace Guncon3Console
 {
-    /// <summary>
-    /// Holds all per-gun objects: reader, state, calibration, feeders.
-    /// </summary>
-    internal class GunInstance
+    internal sealed class GunInstance
     {
         public int Index { get; }
         public GunconReader Reader { get; }
-        public GunState State => Reader.State;
         public AbsMouseFeeder MouseFeeder { get; }
         public KeyboardFeeder KbFeeder { get; }
         public JoystickFeeder JoyFeeder { get; }

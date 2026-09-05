@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-only
 using System.Collections.Generic;
 using Guncon3.Core;
 using Xunit;
@@ -6,117 +7,41 @@ namespace Guncon3.Core.Tests
 {
     public class StickDigitizerTests
     {
-        [Fact]
-        public void IsLow_AtBoundary_IsNotLow()
-        {
-            Assert.False(StickDigitizer.IsLow(128 - StickDigitizer.Deadzone, 128));
-        }
+        [Theory]
+        [InlineData(128, 128 - StickDigitizer.Deadzone, false)]
+        [InlineData(128, 128 - StickDigitizer.Deadzone - 1, true)]
+        [InlineData(120, 120 - StickDigitizer.Deadzone, false)]
+        [InlineData(120, 120 - StickDigitizer.Deadzone - 1, true)]
+        [InlineData(128, 128, false)]
+        public void IsLow_IsTrueOnlyMoreThanTheDeadzoneBelowTheCentre(int centre, int value, bool expected)
+            => Assert.Equal(expected, StickDigitizer.IsLow(value, centre));
 
-        [Fact]
-        public void IsLow_OneBelowBoundary_IsLow()
-        {
-            Assert.True(StickDigitizer.IsLow(128 - StickDigitizer.Deadzone - 1, 128));
-        }
+        [Theory]
+        [InlineData(128, 128 + StickDigitizer.Deadzone, false)]
+        [InlineData(128, 128 + StickDigitizer.Deadzone + 1, true)]
+        [InlineData(120, 120 + StickDigitizer.Deadzone, false)]
+        [InlineData(120, 120 + StickDigitizer.Deadzone + 1, true)]
+        [InlineData(128, 128, false)]
+        public void IsHigh_IsTrueOnlyMoreThanTheDeadzoneAboveTheCentre(int centre, int value, bool expected)
+            => Assert.Equal(expected, StickDigitizer.IsHigh(value, centre));
 
-        [Fact]
-        public void IsHigh_AtBoundary_IsNotHigh()
-        {
-            Assert.False(StickDigitizer.IsHigh(128 + StickDigitizer.Deadzone, 128));
-        }
+        [Theory]
+        [InlineData(StickDigitizer.MinPlausibleCentre, true)]
+        [InlineData(StickDigitizer.MinPlausibleCentre - 1, false)]
+        [InlineData(StickDigitizer.MaxPlausibleCentre, true)]
+        [InlineData(StickDigitizer.MaxPlausibleCentre + 1, false)]
+        public void IsPlausibleCentre_AcceptsTheBandIncludingBothEdges(int centre, bool expected)
+            => Assert.Equal(expected, StickDigitizer.IsPlausibleCentre(centre));
 
-        [Fact]
-        public void IsHigh_OneAboveBoundary_IsHigh()
-        {
-            Assert.True(StickDigitizer.IsHigh(128 + StickDigitizer.Deadzone + 1, 128));
-        }
-
-        [Fact]
-        public void IsLowAndIsHigh_AtCentre_AreBothFalse()
-        {
-            Assert.False(StickDigitizer.IsLow(128, 128));
-            Assert.False(StickDigitizer.IsHigh(128, 128));
-        }
-
-        [Fact]
-        public void IsLow_WithOffCentreCentre_UsesThatCentre()
-        {
-            // centre 120: low boundary is 100 (not low), 99 is low
-            Assert.False(StickDigitizer.IsLow(120 - StickDigitizer.Deadzone, 120));
-            Assert.True(StickDigitizer.IsLow(120 - StickDigitizer.Deadzone - 1, 120));
-        }
-
-        [Fact]
-        public void IsHigh_WithOffCentreCentre_UsesThatCentre()
-        {
-            // centre 120: high boundary is 140 (not high), 141 is high
-            Assert.False(StickDigitizer.IsHigh(120 + StickDigitizer.Deadzone, 120));
-            Assert.True(StickDigitizer.IsHigh(120 + StickDigitizer.Deadzone + 1, 120));
-        }
-
-        [Fact]
-        public void IsPlausibleCentre_AtLowerBandEdge_IsTrue()
-        {
-            Assert.True(StickDigitizer.IsPlausibleCentre(StickDigitizer.MinPlausibleCentre));
-        }
-
-        [Fact]
-        public void IsPlausibleCentre_OneBelowLowerBandEdge_IsFalse()
-        {
-            Assert.False(StickDigitizer.IsPlausibleCentre(StickDigitizer.MinPlausibleCentre - 1));
-        }
-
-        [Fact]
-        public void IsPlausibleCentre_AtUpperBandEdge_IsTrue()
-        {
-            Assert.True(StickDigitizer.IsPlausibleCentre(StickDigitizer.MaxPlausibleCentre));
-        }
-
-        [Fact]
-        public void IsPlausibleCentre_OneAboveUpperBandEdge_IsFalse()
-        {
-            Assert.False(StickDigitizer.IsPlausibleCentre(StickDigitizer.MaxPlausibleCentre + 1));
-        }
-
-        [Fact]
-        public void EstimateCentre_EmptyList_ReturnsDefault()
-        {
-            Assert.Equal(StickDigitizer.DefaultCentre, StickDigitizer.EstimateCentre(new List<int>()));
-        }
-
-        [Fact]
-        public void EstimateCentre_NullList_ReturnsDefault()
-        {
-            Assert.Equal(StickDigitizer.DefaultCentre, StickDigitizer.EstimateCentre(null));
-        }
-
-        [Fact]
-        public void EstimateCentre_OddCount_ReturnsMedian()
-        {
-            var samples = new List<int> { 130, 120, 125 };
-            Assert.Equal(125, StickDigitizer.EstimateCentre(samples));
-        }
-
-        [Fact]
-        public void EstimateCentre_EvenCount_ReturnsUpperOfTheTwoMiddleValues()
-        {
-            // sorted: 120, 122, 124, 126 -> middle index Count/2 = 2 -> 124
-            var samples = new List<int> { 126, 120, 124, 122 };
-            Assert.Equal(124, StickDigitizer.EstimateCentre(samples));
-        }
-
-        [Fact]
-        public void EstimateCentre_ImplausibleMedianAllHigh_FallsBackToDefault()
-        {
-            var samples = new List<int> { 255, 255, 255 };
-            Assert.Equal(StickDigitizer.DefaultCentre, StickDigitizer.EstimateCentre(samples));
-        }
-
-        [Fact]
-        public void EstimateCentre_ImplausibleMedianAllLow_FallsBackToDefault()
-        {
-            var samples = new List<int> { 0, 0, 0 };
-            Assert.Equal(StickDigitizer.DefaultCentre, StickDigitizer.EstimateCentre(samples));
-        }
+        [Theory]
+        [InlineData(null, StickDigitizer.DefaultCentre)]
+        [InlineData(new int[] { }, StickDigitizer.DefaultCentre)]
+        [InlineData(new[] { 130, 120, 125 }, 125)]
+        [InlineData(new[] { 126, 120, 124, 122 }, 124)]
+        [InlineData(new[] { 255, 255, 255 }, StickDigitizer.DefaultCentre)]
+        [InlineData(new[] { 0, 0, 0 }, StickDigitizer.DefaultCentre)]
+        public void EstimateCentre_IsTheMedianWhenPlausibleAndTheDefaultOtherwise(int[]? samples, int expected)
+            => Assert.Equal(expected, StickDigitizer.EstimateCentre(samples));
 
         [Fact]
         public void EstimateCentre_DoesNotReorderTheCallersList()
@@ -126,35 +51,14 @@ namespace Guncon3.Core.Tests
             Assert.Equal(new[] { 130, 120, 125 }, samples);
         }
 
-        [Fact]
-        public void ToCentredAxis_AtCentre_ReturnsExactHalf()
-        {
-            Assert.Equal(StickDigitizer.AxisMax / 2, StickDigitizer.ToCentredAxis(128, 128));
-        }
-
-        [Fact]
-        public void ToCentredAxis_AtLowExtreme_ReturnsZero()
-        {
-            Assert.Equal(0, StickDigitizer.ToCentredAxis(0, 128));
-        }
-
-        [Fact]
-        public void ToCentredAxis_AtHighExtreme_ReturnsAxisMax()
-        {
-            Assert.Equal(StickDigitizer.AxisMax, StickDigitizer.ToCentredAxis(255, 128));
-        }
-
-        [Fact]
-        public void ToCentredAxis_BelowLowExtreme_ClampsToZero()
-        {
-            Assert.Equal(0, StickDigitizer.ToCentredAxis(-50, 128));
-        }
-
-        [Fact]
-        public void ToCentredAxis_AboveHighExtreme_ClampsToAxisMax()
-        {
-            Assert.Equal(StickDigitizer.AxisMax, StickDigitizer.ToCentredAxis(999, 128));
-        }
+        [Theory]
+        [InlineData(128, 128, StickDigitizer.AxisMax / 2)]
+        [InlineData(0, 128, 0)]
+        [InlineData(255, 128, StickDigitizer.AxisMax)]
+        [InlineData(-50, 128, 0)]
+        [InlineData(999, 128, StickDigitizer.AxisMax)]
+        public void ToCentredAxis_PlacesTheEndsAtTheEndsAndClampsBeyondThem(int value, int centre, int expected)
+            => Assert.Equal(expected, StickDigitizer.ToCentredAxis(value, centre));
 
         [Theory]
         [InlineData(110)]
@@ -184,51 +88,22 @@ namespace Guncon3.Core.Tests
             }
         }
 
-        [Fact]
-        public void ToCentredAxis_CentreOfZero_DoesNotThrowAndStaysInRange()
+        [Theory]
+        [InlineData(0)]
+        [InlineData(255)]
+        public void ToCentredAxis_AnImplausibleCentre_StaysInRangeAcrossTheWholeInput(int centre)
         {
-            var ex = Record.Exception(() =>
-            {
-                for (int v = 0; v <= 255; v++)
-                    Assert.InRange(StickDigitizer.ToCentredAxis(v, 0), 0, StickDigitizer.AxisMax);
-            });
-            Assert.Null(ex);
+            for (int v = 0; v <= 255; v++)
+                Assert.InRange(StickDigitizer.ToCentredAxis(v, centre), 0, StickDigitizer.AxisMax);
         }
 
-        [Fact]
-        public void ToCentredAxis_CentreOf255_DoesNotThrowAndStaysInRange()
-        {
-            var ex = Record.Exception(() =>
-            {
-                for (int v = 0; v <= 255; v++)
-                    Assert.InRange(StickDigitizer.ToCentredAxis(v, 255), 0, StickDigitizer.AxisMax);
-            });
-            Assert.Null(ex);
-        }
-
-        [Fact]
-        public void ToAxis_AtZero_ReturnsZero()
-        {
-            Assert.Equal(0, StickDigitizer.ToAxis(0));
-        }
-
-        [Fact]
-        public void ToAxis_At255_ReturnsAxisMax()
-        {
-            Assert.Equal(StickDigitizer.AxisMax, StickDigitizer.ToAxis(255));
-        }
-
-        [Fact]
-        public void ToAxis_BelowZero_ClampsToZero()
-        {
-            Assert.Equal(0, StickDigitizer.ToAxis(-100));
-        }
-
-        [Fact]
-        public void ToAxis_Above255_ClampsToAxisMax()
-        {
-            Assert.Equal(StickDigitizer.AxisMax, StickDigitizer.ToAxis(400));
-        }
+        [Theory]
+        [InlineData(0, 0)]
+        [InlineData(255, StickDigitizer.AxisMax)]
+        [InlineData(-100, 0)]
+        [InlineData(400, StickDigitizer.AxisMax)]
+        public void ToAxis_MapsTheEndsAndClampsBeyondThem(int value, int expected)
+            => Assert.Equal(expected, StickDigitizer.ToAxis(value));
 
         [Fact]
         public void ToAxis_IsMonotonicNonDecreasing_AcrossFullRange()

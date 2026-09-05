@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-only
 using System;
 using System.Globalization;
 using System.IO;
@@ -7,6 +8,9 @@ using Xunit;
 
 namespace Guncon3.Core.Tests
 {
+    // Both classes write real files under AppDomain.CurrentDomain.BaseDirectory through
+    // the default-path API. xunit runs collections one at a time, so they cannot race.
+    [Collection("default-paths")]
     public class StickCentresTests
     {
         [Fact]
@@ -35,82 +39,67 @@ namespace Guncon3.Core.Tests
         [Fact]
         public void SaveAndLoad_RoundTripsAllFourValues()
         {
-            var path = Path.Combine(Path.GetTempPath(), Path.GetRandomFileName());
-            try
-            {
-                var sc = new StickCentres { HatX = 118, HatY = 120, RX = 127, RY = 122 };
-                sc.Save(path);
+            using var file = new TempFile();
 
-                var loaded = StickCentres.Load(path);
+            var sc = new StickCentres { HatX = 118, HatY = 120, RX = 127, RY = 122 };
+            sc.Save(file.Path);
 
-                Assert.NotNull(loaded);
-                Assert.Equal(118, loaded.HatX);
-                Assert.Equal(120, loaded.HatY);
-                Assert.Equal(127, loaded.RX);
-                Assert.Equal(122, loaded.RY);
-            }
-            finally { File.Delete(path); }
+            var loaded = StickCentres.Load(file.Path);
+
+            Assert.NotNull(loaded);
+            Assert.Equal(118, loaded.HatX);
+            Assert.Equal(120, loaded.HatY);
+            Assert.Equal(127, loaded.RX);
+            Assert.Equal(122, loaded.RY);
         }
 
         [Fact]
         public void Load_ReturnsNullForMissingFile()
         {
-            var path = Path.Combine(Path.GetTempPath(), "absent-" + Path.GetRandomFileName());
+            using var file = new TempFile("absent-");
 
-            Assert.Null(StickCentres.Load(path));
+            Assert.Null(StickCentres.Load(file.Path));
         }
 
         [Fact]
         public void Load_ReturnsNullForMalformedFile()
         {
-            var path = Path.Combine(Path.GetTempPath(), Path.GetRandomFileName());
-            try
-            {
-                File.WriteAllLines(path, new[] { "HatX=notanumber", "HatY=120", "RX=127", "RY=122" });
+            using var file = new TempFile();
+            File.WriteAllLines(file.Path, new[] { "HatX=notanumber", "HatY=120", "RX=127", "RY=122" });
 
-                Assert.Null(StickCentres.Load(path));
-            }
-            finally { File.Delete(path); }
+            Assert.Null(StickCentres.Load(file.Path));
         }
 
         [Fact]
         public void Load_ReturnsNullForImplausibleValue()
         {
-            var path = Path.Combine(Path.GetTempPath(), Path.GetRandomFileName());
-            try
-            {
-                File.WriteAllLines(path, new[] { "HatX=200", "HatY=120", "RX=127", "RY=122" });
+            using var file = new TempFile();
+            File.WriteAllLines(file.Path, new[] { "HatX=200", "HatY=120", "RX=127", "RY=122" });
 
-                Assert.Null(StickCentres.Load(path));
-            }
-            finally { File.Delete(path); }
+            Assert.Null(StickCentres.Load(file.Path));
         }
 
         [Fact]
         public void Load_SkipsCommentsAndBlankLines()
         {
-            var path = Path.Combine(Path.GetTempPath(), Path.GetRandomFileName());
-            try
+            using var file = new TempFile();
+            File.WriteAllLines(file.Path, new[]
             {
-                File.WriteAllLines(path, new[]
-                {
-                    "# stick centres",
-                    "",
-                    "HatX=118",
-                    "   ",
-                    "# right stick",
-                    "HatY=120",
-                    "RX=127",
-                    "RY=122"
-                });
+                "# stick centres",
+                "",
+                "HatX=118",
+                "   ",
+                "# right stick",
+                "HatY=120",
+                "RX=127",
+                "RY=122"
+            });
 
-                var loaded = StickCentres.Load(path);
+            var loaded = StickCentres.Load(file.Path);
 
-                Assert.NotNull(loaded);
-                Assert.Equal(118, loaded.HatX);
-                Assert.Equal(122, loaded.RY);
-            }
-            finally { File.Delete(path); }
+            Assert.NotNull(loaded);
+            Assert.Equal(118, loaded.HatX);
+            Assert.Equal(122, loaded.RY);
         }
 
         [Fact]
@@ -118,23 +107,22 @@ namespace Guncon3.Core.Tests
         {
             var original = Thread.CurrentThread.CurrentCulture;
             Thread.CurrentThread.CurrentCulture = new CultureInfo("de-DE");
-            var path = Path.Combine(Path.GetTempPath(), Path.GetRandomFileName());
+            using var file = new TempFile();
             try
             {
                 var sc = new StickCentres { HatX = 118, HatY = 120, RX = 127, RY = 122 };
-                sc.Save(path);
+                sc.Save(file.Path);
 
-                var text = File.ReadAllText(path);
+                var text = File.ReadAllText(file.Path);
                 Assert.DoesNotContain(",", text);
 
-                var loaded = StickCentres.Load(path);
+                var loaded = StickCentres.Load(file.Path);
                 Assert.NotNull(loaded);
                 Assert.Equal(118, loaded.HatX);
             }
             finally
             {
                 Thread.CurrentThread.CurrentCulture = original;
-                File.Delete(path);
             }
         }
 

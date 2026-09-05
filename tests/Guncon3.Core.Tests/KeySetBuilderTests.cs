@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: GPL-2.0-only
+using System;
 using System.Collections.Generic;
 using Guncon3.Core;
 using Xunit;
@@ -14,12 +16,20 @@ namespace Guncon3.Core.Tests
             return a;
         }
 
-        private static Dictionary<GunButton, bool> Pressed(params GunButton[] down)
+        private static bool[] Pressed(params GunButton[] down)
         {
-            var d = new Dictionary<GunButton, bool>();
-            foreach (GunButton b in System.Enum.GetValues<GunButton>()) d[b] = false;
-            foreach (var b in down) d[b] = true;
-            return d;
+            var a = new bool[GunButtons.Count];
+            foreach (var b in down) a[(int)b] = true;
+            return a;
+        }
+
+        [Fact]
+        public void Update_RejectsAPressedSpanShorterThanTheButtonCount()
+        {
+            var b = new KeySetBuilder();
+            var mapping = Map((GunButton.Trigger, 40));
+
+            Assert.Throws<ArgumentException>(() => b.Update(mapping, new bool[GunButtons.Count - 1]));
         }
 
         [Fact]
@@ -98,16 +108,6 @@ namespace Guncon3.Core.Tests
         }
 
         [Fact]
-        public void Update_IgnoresButtonsMissingFromPressedState()
-        {
-            var b = new KeySetBuilder();
-            var mapping = Map((GunButton.Trigger, 40));
-
-            Assert.False(b.Update(mapping, new Dictionary<GunButton, bool>()));
-            Assert.Equal(0, b.Count);
-        }
-
-        [Fact]
         public void Reset_ForcesTheNextUpdateToReportChange()
         {
             var b = new KeySetBuilder();
@@ -137,6 +137,20 @@ namespace Guncon3.Core.Tests
             long after = System.GC.GetAllocatedBytesForCurrentThread();
 
             Assert.Equal(0, after - before);
+        }
+
+        [Fact]
+        public void Update_ReportsChangeWhenTheCountIsTheSameButAKeyDiffers()
+        {
+            // A regression in the count fast path would pass every other test here
+            // while the keyboard silently stopped reporting a swapped key.
+            var b = new KeySetBuilder();
+            var mapping = Map((GunButton.A1, 40), (GunButton.B1, 41));
+
+            Assert.True(b.Update(mapping, Pressed(GunButton.A1)));
+            Assert.True(b.Update(mapping, Pressed(GunButton.B1)));
+            Assert.Equal(1, b.Count);
+            Assert.Equal(41, b.Keys[0]);
         }
     }
 }

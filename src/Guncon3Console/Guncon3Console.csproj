@@ -1,14 +1,15 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <OutputType>Exe</OutputType>
+    <OutputType>WinExe</OutputType>
     <TargetFramework>net8.0-windows</TargetFramework>
     <RootNamespace>Guncon3Console</RootNamespace>
     <AssemblyName>Guncon3Console</AssemblyName>
     <UseWindowsForms>true</UseWindowsForms>
     <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
-    <LangVersion>12.0</LangVersion>
-    <Platforms>AnyCPU;x64;x86</Platforms>
+    <!-- The exe's icon: the window, the taskbar and the tray icon all come from it.
+         Regenerate with `python3 tools/make-icon.py src/Guncon3Console/guncon3.ico`. -->
+    <ApplicationIcon>guncon3.ico</ApplicationIcon>
     <!-- Keep the .pdb files - a crash on hardware nobody here can reproduce is worth
          a readable stack - but leave the XML documentation out of the published
          output. It exists for IntelliSense while working on the code, and next to a
@@ -34,6 +35,10 @@
     <PackageReference Include="Nefarius.Drivers.WinUSB" Version="5.3.0" />
   </ItemGroup>
 
-  <!-- Release build: dotnet publish -c Release -r win-x64 -p:SelfContained=true -p:PublishSingleFile=true -->
+  <!-- Release build (self-contained, one exe):
+       dotnet publish src/Guncon3Console/Guncon3Console.csproj -c Release -r win-x64
+         -p:SelfContained=true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true
+       IncludeNativeLibrariesForSelfExtract is required: without it the WindowsDesktop
+       runtime pack's native libraries sit beside the exe instead of inside it. -->
 
 </Project>

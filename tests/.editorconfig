@@ -1,0 +1,13 @@
+# Test-project-only analyzer relaxations. Each rule below is a style the test
+# suite adopts on purpose; production code under src/ keeps all three.
+root = false
+
+[*.cs]
+# CA1707: xunit method names are sentences with underscores (Load_ReturnsNullForMissingFile).
+dotnet_diagnostic.CA1707.severity = none
+# CA1861: inline `new[] { ... }` arguments are the test data; hoisting them to
+# static fields would separate every assertion from its input.
+dotnet_diagnostic.CA1861.severity = none
+# CA2201: UsbErrorsTests constructs bare `new Exception(...)` chains on purpose,
+# as the fixture for exception-nesting behaviour.
+dotnet_diagnostic.CA2201.severity = none

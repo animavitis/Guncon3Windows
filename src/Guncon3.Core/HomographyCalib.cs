@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-only
 using System;
 using System.Collections.Generic;
 
@@ -29,11 +30,8 @@ namespace Guncon3.Core
         /// <summary>The nine coefficients, with the last fixed at 1.</summary>
         public IReadOnlyList<double> Matrix => _matrixView;
 
-        /// <summary>
-        /// How far the captured centre point lands from the middle of the screen
-        /// once the corner fit is applied, in normalized units. A consistent
-        /// capture puts it near zero.
-        /// </summary>
+        /// <summary>How far the captured centre point lands from the middle of the screen once the corner fit
+        /// is applied, in normalized units.</summary>
         public double CentreError { get; }
 
         /// <summary>True when the fit does not agree with the captured centre.</summary>
@@ -51,7 +49,7 @@ namespace Guncon3.Core
         /// cannot produce a transform: fewer than five of them, or an arrangement
         /// degenerate enough to leave the linear system singular.
         /// </summary>
-        public static HomographyCalib FromPoints(IReadOnlyList<(double X, double Y)> points)
+        public static HomographyCalib? FromPoints(IReadOnlyList<(double X, double Y)>? points)
         {
             if (points == null || points.Count < 5)
                 return null;

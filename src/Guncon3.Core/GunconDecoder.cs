@@ -1,5 +1,5 @@
+// SPDX-License-Identifier: GPL-2.0-only
 using System;
-using System.Collections.Generic;
 
 namespace Guncon3.Core
 {
@@ -8,10 +8,14 @@ namespace Guncon3.Core
     /// </summary>
     public static class GunconDecoder
     {
+        private static readonly byte[] KeyBytes = { 0x01, 0x12, 0x6f, 0x32, 0x24, 0x60, 0x17, 0x21 };
+
         /// <summary>
-        /// The 8-byte challenge written to the device's OUT pipe before each read.
+        /// The 8-byte challenge written to the device's OUT pipe once per connection,
+        /// and again after any read that was not Ok. Read-only: the transport copies it
+        /// into its own buffer once.
         /// </summary>
-        public static readonly byte[] Key = { 0x01, 0x12, 0x6f, 0x32, 0x24, 0x60, 0x17, 0x21 };
+        public static ReadOnlySpan<byte> Key => KeyBytes;
 
         private static readonly byte[] KEY_TABLE = new byte[]{
             0x75, 0xC3, 0x10, 0x31, 0xB5, 0xD3, 0x69, 0x84, 0x89, 0xBA, 0xD6, 0x89, 0xBD, 0x70, 0x19, 0x8E, 0x58, 0xA8,
@@ -34,10 +38,8 @@ namespace Guncon3.Core
             0xA5, 0xBB, 0x21, 0xC8
         };
 
-        /// <summary>
-        /// Decodes into a caller-owned buffer. Returns false for a wrong-sized input,
-        /// a destination shorter than 13 bytes, or a failed checksum.
-        /// </summary>
+        /// <summary>Decodes into a caller-owned buffer. Returns false for a wrong-sized input, a destination
+        /// shorter than 13 bytes, or a failed checksum.</summary>
         public static bool TryDecode(ReadOnlySpan<byte> data, Span<byte> destination)
         {
             if (data.Length != 15 || destination.Length < 13)
@@ -51,11 +53,11 @@ namespace Guncon3.Core
             a_sum = (a_sum ^ data[3]) + data[2] + data[1] - data[0];
             a_sum &= 0xFF;
 
-            if (a_sum != Key[7]) return false;
+            if (a_sum != KeyBytes[7]) return false;
 
-            long key_offset = Key[1] ^ Key[2];
-            key_offset = key_offset - Key[3] - Key[4];
-            key_offset = (key_offset ^ Key[5]) + Key[6] - Key[7];
+            long key_offset = KeyBytes[1] ^ KeyBytes[2];
+            key_offset = key_offset - KeyBytes[3] - KeyBytes[4];
+            key_offset = (key_offset ^ KeyBytes[5]) + KeyBytes[6] - KeyBytes[7];
             key_offset = (key_offset ^ data[14]) + 0x26;
             key_offset &= 0xFF;
 
@@ -69,7 +71,7 @@ namespace Guncon3.Core
                 {
                     key_offset--;
                     long bkey = KEY_TABLE[key_offset + 0x41];
-                    long keyr = Key[key_index];
+                    long keyr = KeyBytes[key_index];
                     if (--key_index == 0) key_index = 7;
 
                     switch (bkey & 3)
@@ -84,22 +86,6 @@ namespace Guncon3.Core
             }
 
             return true;
-        }
-
-        /// <summary>
-        /// Returns 13 decoded bytes, or null when the report's checksum does not match.
-        /// Allocating wrapper kept for callers that are not on the hot path.
-        /// </summary>
-        public static List<byte> Decode(byte[] data2)
-        {
-            if (data2 == null || data2.Length != 15)
-                return new List<byte>();
-
-            var buffer = new byte[13];
-            if (!TryDecode(data2, buffer))
-                return null;
-
-            return new List<byte>(buffer);
         }
     }
 }

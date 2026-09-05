@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-only
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -8,26 +9,15 @@ namespace Guncon3.Core.Tests
 {
     public class HomographyCalibTests
     {
-        /// A gun held to the left of the screen: the right edge of the captured
-        /// quadrilateral is vertically compressed, and raw Y decreases downward.
-        private static List<(double X, double Y)> Keystone(double centreX = 1000, double centreY = 1000) => new()
-        {
-            (200, 1800),   // P0 top-left
-            (1800, 1600),  // P1 top-right
-            (1800, 400),   // P2 bottom-right
-            (200, 200),    // P3 bottom-left
-            (centreX, centreY)
-        };
-
         [Fact]
         public void FromPoints_MapsEachCapturedCornerOntoItsScreenCorner()
         {
-            var calib = HomographyCalib.FromPoints(Keystone());
+            var calib = HomographyCalib.FromPoints(Fixtures.Keystone());
 
             Assert.NotNull(calib);
 
             var expected = new[] { (0.0, 0.0), (1.0, 0.0), (1.0, 1.0), (0.0, 1.0) };
-            var points = Keystone();
+            var points = Fixtures.Keystone();
 
             for (int i = 0; i < 4; i++)
             {
@@ -40,7 +30,8 @@ namespace Guncon3.Core.Tests
         [Fact]
         public void MapNormalized_ClampsAPointOutsideTheCapturedQuadrilateral()
         {
-            var calib = HomographyCalib.FromPoints(Keystone());
+            var calib = HomographyCalib.FromPoints(Fixtures.Keystone());
+            Assert.NotNull(calib);
 
             var far = calib.MapNormalized(-100000, -100000);
             Assert.InRange(far.X, 0.0, 1.0);
@@ -56,11 +47,11 @@ namespace Guncon3.Core.Tests
         {
             // The true projective centre of the corner quad, not its arithmetic mean.
             var unitSquare = new (double X, double Y)[] { (0, 0), (1, 0), (1, 1), (0, 1) };
-            var corners = Keystone().GetRange(0, 4).ToArray();
+            var corners = Fixtures.Keystone().GetRange(0, 4).ToArray();
             var forward = Homography.Solve(unitSquare, corners);
             var trueCentre = Homography.Apply(forward, 0.5, 0.5);
 
-            var calib = HomographyCalib.FromPoints(Keystone(trueCentre.X, trueCentre.Y));
+            var calib = HomographyCalib.FromPoints(Fixtures.Keystone(trueCentre.X, trueCentre.Y));
 
             Assert.NotNull(calib);
             Assert.True(calib.CentreError < 1e-6, $"centre error was {calib.CentreError}");
@@ -71,7 +62,7 @@ namespace Guncon3.Core.Tests
         public void CentreError_IsLargeAndSuspectWhenTheCentreDisagrees()
         {
             // Centre shot far from where the corners imply it should be.
-            var calib = HomographyCalib.FromPoints(Keystone(400, 1700));
+            var calib = HomographyCalib.FromPoints(Fixtures.Keystone(400, 1700));
 
             Assert.NotNull(calib);
             Assert.True(calib.CentreError > HomographyCalib.SuspectCentreError,
@@ -84,7 +75,7 @@ namespace Guncon3.Core.Tests
         {
             Assert.Null(HomographyCalib.FromPoints(null));
             Assert.Null(HomographyCalib.FromPoints(new List<(double X, double Y)>()));
-            Assert.Null(HomographyCalib.FromPoints(Keystone().GetRange(0, 4)));
+            Assert.Null(HomographyCalib.FromPoints(Fixtures.Keystone().GetRange(0, 4)));
         }
 
         [Fact]
@@ -103,7 +94,7 @@ namespace Guncon3.Core.Tests
         [Fact]
         public void Matrix_ExposesNineCoefficients()
         {
-            var calib = HomographyCalib.FromPoints(Keystone());
+            var calib = HomographyCalib.FromPoints(Fixtures.Keystone());
 
             Assert.NotNull(calib);
             Assert.Equal(9, calib.Matrix.Count);
@@ -112,7 +103,7 @@ namespace Guncon3.Core.Tests
         [Fact]
         public void Matrix_IsNotTheLiveArrayAndCannotBeCastBackToMutateIt()
         {
-            var calib = HomographyCalib.FromPoints(Keystone());
+            var calib = HomographyCalib.FromPoints(Fixtures.Keystone());
 
             Assert.NotNull(calib);
             Assert.False(calib.Matrix is double[], "Matrix must not hand out the live backing array.");
