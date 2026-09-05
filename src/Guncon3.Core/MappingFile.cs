@@ -100,7 +100,7 @@ namespace Guncon3.Core
                 var cmd = left.Substring(dot + 1).Trim();
 
                 if (!Enum.TryParse<GunButton>(right, ignoreCase: true, out var gunBtn)
-                    || !Enum.IsDefined(typeof(GunButton), gunBtn))
+                    || !Enum.IsDefined(gunBtn))
                 {
                     diagnostics.Add($"Line {lineNo}: unknown gun command: {right}");
                     continue;
@@ -110,7 +110,7 @@ namespace Guncon3.Core
                 {
                     case "MOUSE":
                         if (Enum.TryParse<MouseButton>(cmd, ignoreCase: true, out var mb)
-                            && Enum.IsDefined(typeof(MouseButton), mb))
+                            && Enum.IsDefined(mb))
                             mouse[gunBtn] = mb;
                         else
                             diagnostics.Add($"Line {lineNo}: unknown mouse button: {cmd}");
