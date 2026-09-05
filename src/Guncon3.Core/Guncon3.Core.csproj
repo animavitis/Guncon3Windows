@@ -1,7 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <TargetFramework>net8.0</TargetFramework>
+    <TargetFramework>net10.0</TargetFramework>
     <RootNamespace>Guncon3.Core</RootNamespace>
     <Nullable>enable</Nullable>
     <AssemblyName>Guncon3.Core</AssemblyName>

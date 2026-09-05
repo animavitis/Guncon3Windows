@@ -48,13 +48,15 @@ namespace Guncon3Console.Ui
         /// <summary>Raised after a file was written, so the host can reload the mappings.</summary>
         public event Action Saved;
 
-        /// <summary>Runs a modal dialog under the host's busy state; null runs it directly.</summary>
-        public Action<Action> Modal { get; set; }
+        /// <summary>Runs a modal dialog under the host's busy state.</summary>
+        private readonly Action<Action> _modal;
 
-        private void RunModal(Action show) => (Modal ?? (a => a()))(show);
+        private void RunModal(Action show) => _modal(show);
 
-        public MappingEditor()
+        internal MappingEditor(Action<Action> modal)
         {
+            _modal = modal ?? throw new ArgumentNullException(nameof(modal));
+
             _files = new ToolStripComboBox
             {
                 DropDownStyle = ComboBoxStyle.DropDownList,
