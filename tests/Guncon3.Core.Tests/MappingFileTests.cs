@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-only
 using System.Collections.Generic;
 using System.Linq;
 using Guncon3.Core;
@@ -189,6 +190,43 @@ namespace Guncon3.Core.Tests
                 Assert.True(m.Keyboard.TryGetValue(pair.Key, out var value));
                 Assert.Equal(value, pair.Value);
             }
+        }
+
+        [Theory]
+        [InlineData("KEYBOARD.0 = Trigger", "0")]
+        [InlineData("KEYBOARD.200 = Trigger", "200")]
+        [InlineData("KEYBOARD.3 = Trigger", "3")]
+        public void Parse_RejectsAKeycodeOutsideTheTable(string line, string code)
+        {
+            var m = MappingFile.Parse(new[] { line });
+
+            Assert.Empty(m.Keyboard);
+            var d = m.Diagnostics.Single();
+            Assert.Contains("Line 1", d);
+            Assert.Contains($"unknown keycode: {code}", d);
+            Assert.Contains("keys", d);   // names the command that lists valid codes
+        }
+
+        [Fact]
+        public void Parse_AcceptsEveryKeycodeInTheTable()
+        {
+            var lines = KeyCodeTable.Entries.Select(e => $"KEYBOARD.{e.Code} = Trigger").ToArray();
+
+            var m = MappingFile.Parse(lines);
+
+            Assert.Empty(m.Diagnostics);
+        }
+
+        [Theory]
+        [InlineData("KEYBOARD.+30 = Trigger")]
+        [InlineData("KEYBOARD.٣٠ = Trigger")]
+        [InlineData("KEYBOARD.1e1 = Trigger")]
+        public void Parse_RejectsKeycodesThatAreNotPlainAsciiDigits(string line)
+        {
+            var m = MappingFile.Parse(new[] { line });
+
+            Assert.Empty(m.Keyboard);
+            Assert.Contains("not a keycode", m.Diagnostics.Single());
         }
     }
 }

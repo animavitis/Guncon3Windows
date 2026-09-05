@@ -1,9 +1,11 @@
+// SPDX-License-Identifier: GPL-2.0-only
+using System;
 using System.Diagnostics;
 using Guncon3.Core;
 
 namespace Guncon3Console.TetherScript
 {
-    class KeyboardFeeder : FeederBase<SetFeatureKeyboard>
+    sealed class KeyboardFeeder : FeederBase<SetFeatureKeyboard>
     {
         private readonly uint FTimeout = 5000;
 
@@ -11,6 +13,11 @@ namespace Guncon3Console.TetherScript
 
         private static readonly long PingIntervalTicks = Stopwatch.Frequency;   // 1000 ms
         private long _lastSendTimestamp;
+
+        /// <summary>The key set the device holds after the last <see cref="Feed"/>, ascending and 0..6 long.
+        /// Valid on the worker thread only: the span points at the builder's live buffer, which the next Feed
+        /// overwrites.</summary>
+        internal ReadOnlySpan<byte> LastKeys => _keys.Keys;
 
         public KeyboardFeeder(GunState state)
             : base(state, "Keyboard", DriversConst.TTC_PRODUCTID_KEYBOARD)
@@ -59,7 +66,7 @@ namespace Guncon3Console.TetherScript
 
         internal void Feed(GunMapping mapping)
         {
-            bool changed = _keys.Update(mapping.KeyboardPairs, State.BtnState);
+            bool changed = _keys.Update(mapping.KeyboardPairs, State.Buttons);
 
             if (changed)
             {

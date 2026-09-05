@@ -1,14 +1,12 @@
+// SPDX-License-Identifier: GPL-2.0-only
 using System.Diagnostics;
 using Guncon3.Core;
 
 namespace Guncon3Console.TetherScript
 {
-    /// <summary>
-    /// Feeds the gun's two analog sticks, its depth axis and its nine physical
-    /// buttons to a TetherScript virtual joystick, alongside the existing
-    /// absolute mouse and keyboard feeders.
-    /// </summary>
-    class JoystickFeeder : FeederBase<SetFeatureJoy>
+    /// <summary>Feeds the gun's two analog sticks, its depth axis and its nine physical buttons to a
+    /// TetherScript virtual joystick.</summary>
+    sealed class JoystickFeeder : FeederBase<SetFeatureJoy>
     {
         // The nine physical GunCon 3 buttons, in GunButton declaration order.
         // Indices 0..8 here are exactly the joystick report's btn0 bits 0..7 and
@@ -30,36 +28,32 @@ namespace Guncon3Console.TetherScript
         private long _lastSendTimestamp;
         private JoystickReportState _lastSent;
 
-        /// <summary>
-        /// The stick centres to scale the analog axes against. Set this from
-        /// <see cref="GunconReader.Centres"/> so scaling follows the auto-measured
-        /// or file-loaded values rather than assuming the default centre.
-        /// </summary>
+        /// <summary>The stick centres to scale the analog axes against, so scaling follows the auto-measured or
+        /// file-loaded values rather than assuming the default centre.</summary>
         public StickCentres Centres { get; set; } = new StickCentres();
+
+        /// <summary>The report state this feeder computed on the last <see cref="Feed"/> — whether or not it
+        /// was sent, because an unchanged report is still what the device is showing. Written and read on the
+        /// worker thread only, so it needs no locking.</summary>
+        internal JoystickReportState LastState { get; private set; }
 
         public JoystickFeeder(GunState state)
             : base(state, "Joystick", DriversConst.TTC_PRODUCTID_JOYSTICK)
         {
         }
 
-        /// <summary>
-        /// A reconnected device holds nothing, so the record of what it was last
-        /// sent is cleared and the refresh clock zeroed. Both make the next feed
-        /// send unconditionally rather than match a stale value.
-        /// </summary>
+        /// <summary>A reconnected device holds nothing, so the record of what it was last sent is cleared and
+        /// the refresh clock zeroed. Both make the next feed send unconditionally rather than match a stale
+        /// value.</summary>
         protected override void OnConnected()
         {
             _lastSent = default;
             _lastSendTimestamp = 0;
         }
 
-        /// <summary>
-        /// Sends one report with every button clear and the four stick axes centred.
-        /// This device has no Timeout field, so nothing clears a held button or a
-        /// deflected axis on its own — it has to be said explicitly. Used both when
-        /// this feeder is shutting down and when a gun's inputs must be released
-        /// mid-session (e.g. on disconnect while the app keeps running).
-        /// </summary>
+        /// <summary>Sends one report with every button clear and the four stick axes centred. This device has
+        /// no Timeout field, so nothing clears a held button or a deflected axis on its own — it has to be said
+        /// explicitly.</summary>
         public void Release()
         {
             ushort centre = (ushort)(StickDigitizer.AxisMax / 2);
@@ -68,10 +62,8 @@ namespace Guncon3Console.TetherScript
 
         protected override void ReleaseHeldInputs() => Release();
 
-        /// <summary>
-        /// Sends one report and records what went out, so the next feed can tell
-        /// whether anything actually changed. Every send goes through here.
-        /// </summary>
+        /// <summary>Sends one report and records what went out, so the next feed can tell whether anything
+        /// actually changed.</summary>
         private void SendState(in JoystickReportState s)
         {
             var data = new SetFeatureJoy
@@ -122,10 +114,10 @@ namespace Guncon3Console.TetherScript
         {
             var centres = Centres ?? DefaultCentres;
 
-            ushort x = StickDigitizer.ToCentredAxis((int)State.ABS_HAT0X, centres.HatX);
-            ushort y = StickDigitizer.ToCentredAxis((int)State.ABS_HAT0Y, centres.HatY);
-            ushort rx = StickDigitizer.ToCentredAxis((int)State.ABS_RX, centres.RX);
-            ushort ry = StickDigitizer.ToCentredAxis((int)State.ABS_RY, centres.RY);
+            ushort x = StickDigitizer.ToCentredAxis(State.ABS_HAT0X, centres.HatX);
+            ushort y = StickDigitizer.ToCentredAxis(State.ABS_HAT0Y, centres.HatY);
+            ushort rx = StickDigitizer.ToCentredAxis(State.ABS_RX, centres.RX);
+            ushort ry = StickDigitizer.ToCentredAxis(State.ABS_RY, centres.RY);
 
             // The depth axis is genuinely 8-bit (see GunconReader): ToAxis clamps
             // it onto the joystick's 0..AxisMax range instead of leaving it pinned
@@ -135,8 +127,7 @@ namespace Guncon3Console.TetherScript
             byte btn0 = 0, btn1 = 0;
             for (int i = 0; i < PhysicalButtons.Length; i++)
             {
-                if (!State.BtnState.TryGetValue(PhysicalButtons[i], out bool pressed) || !pressed)
-                    continue;
+                if (!State.Buttons[(int)PhysicalButtons[i]]) continue;
 
                 int bit = i % 8;
                 if (i / 8 == 0) btn0 |= (byte)(1 << bit);
@@ -144,6 +135,7 @@ namespace Guncon3Console.TetherScript
             }
 
             var next = new JoystickReportState(x, y, rx, ry, z, btn0, btn1);
+            LastState = next;
 
             // Send only when something moved, with a periodic refresh otherwise: the
             // joystick report has no Timeout field, exactly like the mouse's, so the

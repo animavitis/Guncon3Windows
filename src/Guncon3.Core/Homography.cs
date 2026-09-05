@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-only
 using System;
 
 namespace Guncon3.Core

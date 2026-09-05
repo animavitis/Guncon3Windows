@@ -1,13 +1,12 @@
+// SPDX-License-Identifier: GPL-2.0-only
 using System;
 using System.Globalization;
 using System.IO;
 
 namespace Guncon3.Core
 {
-    /// <summary>
-    /// The measured (or default) rest position of each of the four stick axes,
-    /// used by <see cref="StickDigitizer"/> as the centre of its deadzone.
-    /// </summary>
+    /// <summary>The measured (or default) rest position of each of the four stick axes, used by <see
+    /// cref="StickDigitizer"/> as the centre of its deadzone.</summary>
     public sealed class StickCentres
     {
         public int HatX { get; set; } = StickDigitizer.DefaultCentre;
@@ -32,11 +31,15 @@ namespace Guncon3.Core
         }
 
         /// <summary>Writes stick_centre.txt (next to the executable by default).</summary>
-        public void Save(string path = null, int gunIndex = 0)
+        public void Save(string? path = null, int gunIndex = 0)
         {
             path ??= DefaultPath(gunIndex);
 
-            using var sw = new StreamWriter(path, false);
+            AtomicFile.Write(path, WriteTo);
+        }
+
+        private void WriteTo(TextWriter sw)
+        {
             var ci = CultureInfo.InvariantCulture;
 
             sw.WriteLine("HatX=" + HatX.ToString(ci));
@@ -45,12 +48,9 @@ namespace Guncon3.Core
             sw.WriteLine("RY=" + RY.ToString(ci));
         }
 
-        /// <summary>
-        /// Reads stick_centre.txt. Returns null if the file is missing, cannot be
-        /// parsed, or the result is not <see cref="IsValid"/> — a file with an
-        /// implausible value must not be trusted.
-        /// </summary>
-        public static StickCentres Load(string path = null, int gunIndex = 0)
+        /// <summary>Reads stick_centre.txt. Returns null if the file is missing, cannot be parsed, or the
+        /// result is not <see cref="IsValid"/>.</summary>
+        public static StickCentres? Load(string? path = null, int gunIndex = 0)
         {
             path ??= DefaultPath(gunIndex);
 
@@ -68,7 +68,7 @@ namespace Guncon3.Core
             foreach (var rawLine in lines)
             {
                 var line = rawLine?.Trim();
-                if (string.IsNullOrEmpty(line) || line.StartsWith("#"))
+                if (string.IsNullOrEmpty(line) || line.StartsWith('#'))
                     continue;
 
                 var eq = line.IndexOf('=');

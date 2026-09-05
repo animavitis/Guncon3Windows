@@ -1,12 +1,11 @@
+// SPDX-License-Identifier: GPL-2.0-only
 using System;
 using System.Collections.Generic;
 
 namespace Guncon3.Core
 {
-    /// <summary>
-    /// Turns an analog stick axis into two digital directions, with a deadzone
-    /// around a per-axis centre. The GunCon 3 reports each axis as one byte.
-    /// </summary>
+    /// <summary>Turns an analog stick axis into two digital directions, with a deadzone around a per-axis
+    /// centre. The GunCon 3 reports each axis as one byte.</summary>
     public static class StickDigitizer
     {
         /// <summary>Centre assumed when nothing better is known.</summary>
@@ -22,10 +21,8 @@ namespace Guncon3.Core
         /// <summary>Half-width of the dead band, in raw axis units.</summary>
         public const int Deadzone = 20;
 
-        /// <summary>
-        /// A measured centre outside this band is not believable — it means the
-        /// stick was held away from rest while it was being measured.
-        /// </summary>
+        /// <summary>A measured centre outside this band is not believable — it means the stick was held away
+        /// from rest while it was being measured.</summary>
         public const int MinPlausibleCentre = 96;
         public const int MaxPlausibleCentre = 160;
 
@@ -44,7 +41,7 @@ namespace Guncon3.Core
         /// caller's list untouched; for an even count this takes the upper of
         /// the two middle values, which is arbitrary but deterministic.
         /// </summary>
-        public static int EstimateCentre(IReadOnlyList<int> samples)
+        public static int EstimateCentre(IReadOnlyList<int>? samples)
         {
             if (samples == null || samples.Count == 0)
                 return DefaultCentre;
@@ -68,8 +65,8 @@ namespace Guncon3.Core
             if (value < RawMin) value = RawMin;
             if (value > RawMax) value = RawMax;
 
-            // Defensive: IsPlausibleCentre keeps a real centre well away from 0 and
-            // 255, but a clamp here is cheaper than proving it can never arrive.
+            // Defensive: IsPlausibleCentre keeps a real centre well away from 0 and 255, but a clamp here is
+            // cheaper than proving it can never arrive.
             if (centre < RawMin + 1) centre = RawMin + 1;
             if (centre > RawMax - 1) centre = RawMax - 1;
 
@@ -97,10 +94,8 @@ namespace Guncon3.Core
             return (ushort)result;
         }
 
-        /// <summary>
-        /// Maps a 0..255 axis onto 0..AxisMax linearly, for an axis with no
-        /// meaningful centre. Values outside 0..255 are clamped.
-        /// </summary>
+        /// <summary>Maps a 0..255 axis onto 0..AxisMax linearly, for an axis with no meaningful centre. Values
+        /// outside 0..255 are clamped.</summary>
         public static ushort ToAxis(int value)
         {
             if (value < RawMin) value = RawMin;

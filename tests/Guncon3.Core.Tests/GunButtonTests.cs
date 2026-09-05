@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-only
 using System;
 using System.Linq;
 using Guncon3.Core;
@@ -47,6 +48,15 @@ namespace Guncon3.Core.Tests
                 "LUp", "LDown", "LLeft", "LRight",
                 "RUp", "RDown", "RLeft", "RRight"
             }, rest);
+        }
+
+        [Fact]
+        public void Count_MatchesTheEnum()
+        {
+            // GunState.Buttons is sized by this constant and indexed by (int)GunButton.
+            Assert.Equal(GunButtons.Count, Enum.GetValues<GunButton>().Length);
+            Assert.Equal(0, (int)Enum.GetValues<GunButton>().Min());
+            Assert.Equal(GunButtons.Count - 1, (int)Enum.GetValues<GunButton>().Max());
         }
     }
 }

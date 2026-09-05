@@ -1,11 +1,9 @@
+// SPDX-License-Identifier: GPL-2.0-only
 using System.Collections.Generic;
 
 namespace Guncon3.Core
 {
-    /// <summary>
-    /// USB HID usage codes accepted in mapping.txt, with the names printed by
-    /// the "keys" command.
-    /// </summary>
+    /// <summary>USB HID usage codes accepted in mapping.txt, with the names printed by the "keys" command.</summary>
     public static class KeyCodeTable
     {
         private static readonly (byte Code, string Name)[] _entries =
@@ -43,16 +41,19 @@ namespace Guncon3.Core
             (108, "F21"), (109, "F22"), (110, "F23"), (111, "F24")
         };
 
-        private static readonly string[] _byCode = BuildIndex();
+        private static readonly string?[] _byCode = BuildIndex();
 
         public static IReadOnlyList<(byte Code, string Name)> Entries => _entries;
 
         /// <summary>Name for a keycode, or null when the code has no name.</summary>
-        public static string NameOf(byte code) => _byCode[code];
+        public static string? NameOf(byte code) => _byCode[code];
 
-        private static string[] BuildIndex()
+        /// <summary>True when the code has a name, which is the same as saying mapping.txt may use it.</summary>
+        public static bool IsValid(byte code) => _byCode[code] != null;
+
+        private static string?[] BuildIndex()
         {
-            var index = new string[256];
+            var index = new string?[256];
             foreach (var (code, name) in _entries)
                 index[code] = name;
             return index;

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-only
 using System;
 using System.Runtime.InteropServices;
 using Guncon3.Core;
@@ -28,6 +29,17 @@ namespace Guncon3.Core.Tests
             Assert.Equal(Marshal.SizeOf<SetFeatureMouseAbs>(), HidReport.SizeOf<SetFeatureMouseAbs>());
             Assert.Equal(Marshal.SizeOf<SetFeatureKeyboard>(), HidReport.SizeOf<SetFeatureKeyboard>());
             Assert.Equal(Marshal.SizeOf<SetFeatureJoy>(), HidReport.SizeOf<SetFeatureJoy>());
+        }
+
+        [Fact]
+        public void SizeOf_AgreesWithTheManagedLayoutWriteUses()
+        {
+            // Write copies Unsafe.SizeOf<T>() bytes through MemoryMarshal; SizeOf reports
+            // Marshal.SizeOf<T>(). For Pack = 1 blittable structs they agree, and the
+            // static initialiser now throws if a future struct makes them differ.
+            Assert.Equal(System.Runtime.CompilerServices.Unsafe.SizeOf<SetFeatureMouseAbs>(), HidReport.SizeOf<SetFeatureMouseAbs>());
+            Assert.Equal(System.Runtime.CompilerServices.Unsafe.SizeOf<SetFeatureKeyboard>(), HidReport.SizeOf<SetFeatureKeyboard>());
+            Assert.Equal(System.Runtime.CompilerServices.Unsafe.SizeOf<SetFeatureJoy>(), HidReport.SizeOf<SetFeatureJoy>());
         }
 
         [Fact]

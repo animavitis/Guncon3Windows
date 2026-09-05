@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-only
 using System;
 using System.Collections.Generic;
 using System.Globalization;
@@ -14,9 +15,9 @@ namespace Guncon3.Core
     }
 
     /// <summary>
-    /// One gun's calibration. Holds the five points captured at the screen corners
-    /// and centre, and both mappings derived from them, so the two can never
-    /// describe different capture sessions.
+    /// One gun's calibration. Holds the five points captured at the screen corners and
+    /// centre, and both mappings derived from them, so the two can never describe
+    /// different capture sessions.
     /// </summary>
     public sealed class CalibrationFile
     {
@@ -25,32 +26,39 @@ namespace Guncon3.Core
         private const int PointCount = 5;
 
         /// <summary>
-        /// The captured points: top-left, top-right, bottom-right, bottom-left,
-        /// centre. Empty for a calibration written before points were stored.
+        /// The captured points: top-left, top-right, bottom-right, bottom-left, centre.
+        /// Empty for a calibration written before points were stored.
         /// </summary>
         public IReadOnlyList<(double X, double Y)> Points { get; }
 
         public RectCalib Rect { get; }
 
-        /// <summary>
-        /// Null when there are no captured points, or when they were too degenerate
-        /// to fit.
-        /// </summary>
-        public HomographyCalib Homography { get; }
+        /// <summary>Null when there are no captured points, or when they were too degenerate to fit.</summary>
+        public HomographyCalib? Homography { get; }
 
-        private CalibrationFile(IReadOnlyList<(double X, double Y)> points, RectCalib rect, HomographyCalib homography)
+        /// <summary>
+        /// The monitor this calibration was captured on. Its size is the rectangle's
+        /// ScreenW/ScreenH; its origin is (0,0) for files written before the origin was
+        /// stored.
+        /// </summary>
+        public ScreenPlacement Screen { get; }
+
+        private CalibrationFile(IReadOnlyList<(double X, double Y)> points, RectCalib rect, HomographyCalib? homography, int screenX, int screenY)
         {
             Points = points;
             Rect = rect;
             Homography = homography;
+            Screen = new ScreenPlacement(screenX, screenY, rect.ScreenW, rect.ScreenH);
         }
 
-        /// <summary>
-        /// Builds a calibration from a fresh capture. The rectangle is derived from
-        /// the points' bounding box, exactly as the calibration window used to
-        /// compute it directly.
-        /// </summary>
+        /// <summary>Builds a calibration from a fresh capture. The rectangle is derived from the points'
+        /// bounding box.</summary>
         public static CalibrationFile FromCapture(IReadOnlyList<(double X, double Y)> points, int screenW, int screenH)
+            => FromCapture(points, new ScreenPlacement(0, 0, screenW, screenH));
+
+        /// <summary>Builds a calibration from a fresh capture on a particular monitor. The rectangle is derived
+        /// from the points' bounding box.</summary>
+        public static CalibrationFile FromCapture(IReadOnlyList<(double X, double Y)> points, ScreenPlacement screen)
         {
             if (points == null || points.Count == 0)
                 throw new ArgumentException("A capture needs points.", nameof(points));
@@ -72,32 +80,27 @@ namespace Guncon3.Core
                 RawMaxX = Math.Round(maxX),
                 RawMinY = Math.Round(minY),
                 RawMaxY = Math.Round(maxY),
-                ScreenW = screenW,
-                ScreenH = screenH,
+                ScreenW = screen.W,
+                ScreenH = screen.H,
                 InvertY = true
             };
 
             var copy = new (double X, double Y)[points.Count];
             for (int i = 0; i < points.Count; i++) copy[i] = points[i];
 
-            return new CalibrationFile(copy, rect, HomographyCalib.FromPoints(copy));
+            return new CalibrationFile(copy, rect, HomographyCalib.FromPoints(copy), screen.X, screen.Y);
         }
 
-        /// <summary>
-        /// Wraps a rectangle with no captured points — what a calibration written
-        /// before this version loads as.
-        /// </summary>
+        /// <summary>Wraps a rectangle with no captured points — what a calibration written before this version
+        /// loads as.</summary>
         public static CalibrationFile FromRect(RectCalib rect)
         {
             ArgumentNullException.ThrowIfNull(rect);
-            return new CalibrationFile(NoPoints, rect, null);
+            return new CalibrationFile(NoPoints, rect, null, 0, 0);
         }
 
-        /// <summary>
-        /// Maps a raw point to normalized 0..1 screen coordinates through the
-        /// requested mapping. Falls back to the rectangle when the homography was
-        /// asked for and is not available, so a caller never has to check first.
-        /// </summary>
+        /// <summary>Maps a raw point to normalized 0..1 screen coordinates. Falls back to the rectangle when
+        /// the homography was asked for and is not available.</summary>
         public (double X, double Y) MapNormalized(double rawX, double rawY, CalibrationMode mode)
         {
             if (mode == CalibrationMode.Homography && Homography != null)
@@ -114,16 +117,16 @@ namespace Guncon3.Core
         }
 
         /// <summary>
-        /// Writes the captured points and the rectangle derived from them. The
-        /// derived fields are written even though this version does not need them,
-        /// so a build that predates the points can still read the file.
+        /// Writes the captured points and the rectangle derived from them, even though
+        /// this version does not need the rectangle, so a build that predates the points
+        /// can still read the file.
         /// </summary>
         /// <exception cref="InvalidOperationException">
         /// The instance holds a non-empty point count other than <see cref="PointCount"/>.
         /// <see cref="Load"/> can only make sense of zero or exactly five points, so a file
         /// this method itself could not load back must never be written.
         /// </exception>
-        public void Save(string path = null, int gunIndex = 0)
+        public void Save(string? path = null, int gunIndex = 0)
         {
             if (Points.Count != 0 && Points.Count != PointCount)
                 throw new InvalidOperationException(
@@ -132,7 +135,11 @@ namespace Guncon3.Core
 
             path ??= DefaultPath(gunIndex);
 
-            using var sw = new StreamWriter(path, false);
+            AtomicFile.Write(path, WriteTo);
+        }
+
+        private void WriteTo(TextWriter sw)
+        {
             var ci = CultureInfo.InvariantCulture;
 
             sw.WriteLine("# raw gun coordinates captured at each target");
@@ -144,20 +151,25 @@ namespace Guncon3.Core
             sw.WriteLine("RawMaxX=" + Rect.RawMaxX.ToString("R", ci));
             sw.WriteLine("RawMinY=" + Rect.RawMinY.ToString("R", ci));
             sw.WriteLine("RawMaxY=" + Rect.RawMaxY.ToString("R", ci));
+            sw.WriteLine("ScreenX=" + Screen.X.ToString(ci));
+            sw.WriteLine("ScreenY=" + Screen.Y.ToString(ci));
             sw.WriteLine("ScreenW=" + Rect.ScreenW.ToString(ci));
             sw.WriteLine("ScreenH=" + Rect.ScreenH.ToString(ci));
             sw.WriteLine("InvertY=" + (Rect.InvertY ? "1" : "0"));
         }
 
         /// <summary>Reads a calibration. Returns null when missing or unusable.</summary>
-        public static CalibrationFile Load(string path = null, int gunIndex = 0)
+        public static CalibrationFile? Load(string? path = null, int gunIndex = 0)
         {
             path ??= DefaultPath(gunIndex);
 
             if (!File.Exists(path))
                 return null;
 
-            var rect = new RectCalib();
+            double rawMinX = 0, rawMaxX = 0, rawMinY = 0, rawMaxY = 0;
+            int screenW = 0, screenH = 0;
+            bool invertY = false;
+            int screenX = 0, screenY = 0;
             var points = new (double X, double Y)?[PointCount];
             var ci = CultureInfo.InvariantCulture;
 
@@ -175,8 +187,8 @@ namespace Guncon3.Core
 
                 if (key.Length == 2 && key[0] == 'P' && key[1] >= '0' && key[1] <= '4')
                 {
-                    // A point line that will not parse means the file is damaged.
-                    // Half a capture is worse than none, so reject the whole thing.
+                    // A point line that will not parse means the file is damaged. Half a
+                    // capture is worse than none, so reject the whole thing.
                     if (!TryParsePoint(val, ci, out var point))
                         return null;
 
@@ -186,15 +198,26 @@ namespace Guncon3.Core
 
                 switch (key)
                 {
-                    case "RawMinX": if (double.TryParse(val, NumberStyles.Float, ci, out var rminx)) rect.RawMinX = rminx; break;
-                    case "RawMaxX": if (double.TryParse(val, NumberStyles.Float, ci, out var rmaxx)) rect.RawMaxX = rmaxx; break;
-                    case "RawMinY": if (double.TryParse(val, NumberStyles.Float, ci, out var rminy)) rect.RawMinY = rminy; break;
-                    case "RawMaxY": if (double.TryParse(val, NumberStyles.Float, ci, out var rmaxy)) rect.RawMaxY = rmaxy; break;
-                    case "ScreenW": if (int.TryParse(val, NumberStyles.Integer, ci, out var sw2)) rect.ScreenW = sw2; break;
-                    case "ScreenH": if (int.TryParse(val, NumberStyles.Integer, ci, out var sh)) rect.ScreenH = sh; break;
-                    case "InvertY": rect.InvertY = (val == "1" || val.Equals("true", StringComparison.OrdinalIgnoreCase)); break;
+                    case "RawMinX": if (double.TryParse(val, NumberStyles.Float, ci, out var rminx)) rawMinX = rminx; break;
+                    case "RawMaxX": if (double.TryParse(val, NumberStyles.Float, ci, out var rmaxx)) rawMaxX = rmaxx; break;
+                    case "RawMinY": if (double.TryParse(val, NumberStyles.Float, ci, out var rminy)) rawMinY = rminy; break;
+                    case "RawMaxY": if (double.TryParse(val, NumberStyles.Float, ci, out var rmaxy)) rawMaxY = rmaxy; break;
+                    // The origin is placement metadata, not part of the mapping, so a
+                    // damaged value falls back to the primary screen instead of
+                    // rejecting the file.
+                    case "ScreenX": if (int.TryParse(val, NumberStyles.Integer, ci, out var sx)) screenX = sx; break;
+                    case "ScreenY": if (int.TryParse(val, NumberStyles.Integer, ci, out var sy)) screenY = sy; break;
+                    case "ScreenW": if (int.TryParse(val, NumberStyles.Integer, ci, out var sw2)) screenW = sw2; break;
+                    case "ScreenH": if (int.TryParse(val, NumberStyles.Integer, ci, out var sh)) screenH = sh; break;
+                    case "InvertY": invertY = (val == "1" || val.Equals("true", StringComparison.OrdinalIgnoreCase)); break;
                 }
             }
+
+            var rect = new RectCalib
+            {
+                RawMinX = rawMinX, RawMaxX = rawMaxX, RawMinY = rawMinY, RawMaxY = rawMaxY,
+                ScreenW = screenW, ScreenH = screenH, InvertY = invertY
+            };
 
             if (!rect.IsValid())
                 return null;
@@ -203,20 +226,24 @@ namespace Guncon3.Core
             foreach (var p in points) if (p.HasValue) found++;
 
             if (found == 0)
-                return FromRect(rect);
+                return new CalibrationFile(NoPoints, rect, null, screenX, screenY);
 
             // Some but not all: a truncated write. Reject rather than guess.
             if (found != PointCount)
                 return null;
 
             var captured = new (double X, double Y)[PointCount];
-            for (int i = 0; i < PointCount; i++) captured[i] = points[i].Value;
+            for (int i = 0; i < PointCount; i++)
+            {
+                if (points[i] is { } p) captured[i] = p;
+                else return null;
+            }
 
-            return new CalibrationFile(captured, rect, HomographyCalib.FromPoints(captured));
+            return new CalibrationFile(captured, rect, HomographyCalib.FromPoints(captured), screenX, screenY);
         }
 
         /// <summary>Reads a calibration and says why it could not be used.</summary>
-        public static CalibrationLoad TryLoad(string path, int gunIndex, out CalibrationFile calibration)
+        public static CalibrationLoad TryLoad(string? path, int gunIndex, out CalibrationFile? calibration)
         {
             calibration = null;
 
@@ -226,7 +253,7 @@ namespace Guncon3.Core
             if (!File.Exists(path))
                 return CalibrationLoad.Missing;
 
-            CalibrationFile loaded;
+            CalibrationFile? loaded;
             try { loaded = Load(path); }
             catch (IOException) { return CalibrationLoad.Malformed; }
             catch (UnauthorizedAccessException) { return CalibrationLoad.Malformed; }
@@ -248,9 +275,10 @@ namespace Guncon3.Core
             if (!double.TryParse(value.Substring(0, comma).Trim(), NumberStyles.Float, ci, out var x)) return false;
             if (!double.TryParse(value.Substring(comma + 1).Trim(), NumberStyles.Float, ci, out var y)) return false;
 
-            // NumberStyles.Float accepts NaN/Infinity under the invariant culture. Those are
-            // never produced by real hardware (ABS_X/ABS_Y are short) and would otherwise
-            // sail through the mapping unclamped, since a NaN comparison is always false.
+            // NumberStyles.Float accepts NaN/Infinity under the invariant culture. Those
+            // are never produced by real hardware (ABS_X/ABS_Y are short) and would
+            // otherwise sail through the mapping unclamped, since a NaN comparison is
+            // always false.
             if (!double.IsFinite(x) || !double.IsFinite(y)) return false;
 
             point = (x, y);

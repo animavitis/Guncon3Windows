@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-only
 using System.Linq;
 using Guncon3.Core;
 using Xunit;
@@ -36,6 +37,28 @@ namespace Guncon3.Core.Tests
             Assert.Equal(codes.OrderBy(c => c), codes);
             Assert.All(codes, c => Assert.InRange(c, (byte)4, (byte)111));
             Assert.All(KeyCodeTable.Entries, e => Assert.False(string.IsNullOrEmpty(e.Name)));
+        }
+
+        [Theory]
+        [InlineData(4)]
+        [InlineData(44)]
+        [InlineData(111)]
+        public void IsValid_IsTrueForEveryNamedCode(byte code) => Assert.True(KeyCodeTable.IsValid(code));
+
+        [Theory]
+        [InlineData(0)]
+        [InlineData(3)]
+        [InlineData(50)]
+        [InlineData(112)]
+        [InlineData(200)]
+        [InlineData(255)]
+        public void IsValid_IsFalseOutsideTheTable(byte code) => Assert.False(KeyCodeTable.IsValid(code));
+
+        [Fact]
+        public void IsValid_AgreesWithNameOfForEveryByte()
+        {
+            for (int c = 0; c <= 255; c++)
+                Assert.Equal(KeyCodeTable.NameOf((byte)c) != null, KeyCodeTable.IsValid((byte)c));
         }
     }
 }

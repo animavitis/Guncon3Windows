@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-only
 using System;
 using System.Collections.Generic;
 using System.Globalization;
@@ -8,17 +9,15 @@ using Xunit;
 
 namespace Guncon3.Core.Tests
 {
+    // Both classes write real files under AppDomain.CurrentDomain.BaseDirectory through
+    // the default-path API. xunit runs collections one at a time, so they cannot race.
+    [Collection("default-paths")]
     public class CalibrationFileTests
     {
-        private static List<(double X, double Y)> Keystone() => new()
-        {
-            (200, 1800), (1800, 1600), (1800, 400), (200, 200), (1000, 1000)
-        };
-
         [Fact]
         public void FromCapture_DerivesTheRectangleFromThePointsBoundingBox()
         {
-            var file = CalibrationFile.FromCapture(Keystone(), 1920, 1080);
+            var file = CalibrationFile.FromCapture(Fixtures.Keystone(), 1920, 1080);
 
             Assert.Equal(200, file.Rect.RawMinX);
             Assert.Equal(1800, file.Rect.RawMaxX);
@@ -33,7 +32,7 @@ namespace Guncon3.Core.Tests
         [Fact]
         public void FromCapture_KeepsThePointsAndDerivesAHomography()
         {
-            var file = CalibrationFile.FromCapture(Keystone(), 1920, 1080);
+            var file = CalibrationFile.FromCapture(Fixtures.Keystone(), 1920, 1080);
 
             Assert.Equal(5, file.Points.Count);
             Assert.Equal((200.0, 1800.0), file.Points[0]);
@@ -43,7 +42,7 @@ namespace Guncon3.Core.Tests
         [Fact]
         public void MapNormalized_RectModeAgreesWithTheRectangleAlone()
         {
-            var file = CalibrationFile.FromCapture(Keystone(), 1920, 1080);
+            var file = CalibrationFile.FromCapture(Fixtures.Keystone(), 1920, 1080);
 
             var viaFile = file.MapNormalized(1000, 1000, CalibrationMode.Rect);
             var viaRect = file.Rect.MapNormalized(1000, 1000);
@@ -55,9 +54,10 @@ namespace Guncon3.Core.Tests
         [Fact]
         public void MapNormalized_HomographyModeAgreesWithTheHomographyAlone()
         {
-            var file = CalibrationFile.FromCapture(Keystone(), 1920, 1080);
+            var file = CalibrationFile.FromCapture(Fixtures.Keystone(), 1920, 1080);
 
             var viaFile = file.MapNormalized(1000, 1000, CalibrationMode.Homography);
+            Assert.NotNull(file.Homography);
             var viaHomography = file.Homography.MapNormalized(1000, 1000);
 
             Assert.Equal(viaHomography.X, viaFile.X, 9);
@@ -90,7 +90,7 @@ namespace Guncon3.Core.Tests
         [Fact]
         public void FromRect_RejectsNullRatherThanBuildingAnInstanceThatThrowsLater()
         {
-            Assert.Throws<ArgumentNullException>(() => CalibrationFile.FromRect(null));
+            Assert.Throws<ArgumentNullException>(() => CalibrationFile.FromRect(null!));
         }
 
         [Fact]
@@ -129,56 +129,49 @@ namespace Guncon3.Core.Tests
         [Fact]
         public void SaveThenLoad_RoundTripsThePointsAndTheRectangle()
         {
-            var path = Path.Combine(Path.GetTempPath(), Path.GetRandomFileName());
-            try
+            using var file = new TempFile();
+
+            var original = CalibrationFile.FromCapture(Fixtures.Keystone(), 1921, 1081);
+            original.Save(file.Path);
+
+            var loaded = CalibrationFile.Load(file.Path);
+
+            Assert.NotNull(loaded);
+            Assert.Equal(5, loaded.Points.Count);
+            for (int i = 0; i < 5; i++)
             {
-                var original = CalibrationFile.FromCapture(Keystone(), 1921, 1081);
-                original.Save(path);
-
-                var loaded = CalibrationFile.Load(path);
-
-                Assert.NotNull(loaded);
-                Assert.Equal(5, loaded.Points.Count);
-                for (int i = 0; i < 5; i++)
-                {
-                    Assert.Equal(original.Points[i].X, loaded.Points[i].X, 6);
-                    Assert.Equal(original.Points[i].Y, loaded.Points[i].Y, 6);
-                }
-
-                Assert.Equal(original.Rect.RawMinX, loaded.Rect.RawMinX);
-                Assert.Equal(original.Rect.RawMaxX, loaded.Rect.RawMaxX);
-                Assert.Equal(original.Rect.RawMinY, loaded.Rect.RawMinY);
-                Assert.Equal(original.Rect.RawMaxY, loaded.Rect.RawMaxY);
-                Assert.Equal(1921, loaded.Rect.ScreenW);
-                Assert.Equal(1081, loaded.Rect.ScreenH);
-                Assert.True(loaded.Rect.InvertY);
-                Assert.NotNull(loaded.Homography);
+                Assert.Equal(original.Points[i].X, loaded.Points[i].X, 6);
+                Assert.Equal(original.Points[i].Y, loaded.Points[i].Y, 6);
             }
-            finally { File.Delete(path); }
+
+            Assert.Equal(original.Rect.RawMinX, loaded.Rect.RawMinX);
+            Assert.Equal(original.Rect.RawMaxX, loaded.Rect.RawMaxX);
+            Assert.Equal(original.Rect.RawMinY, loaded.Rect.RawMinY);
+            Assert.Equal(original.Rect.RawMaxY, loaded.Rect.RawMaxY);
+            Assert.Equal(1921, loaded.Rect.ScreenW);
+            Assert.Equal(1081, loaded.Rect.ScreenH);
+            Assert.True(loaded.Rect.InvertY);
+            Assert.NotNull(loaded.Homography);
         }
 
         [Fact]
         public void Load_AFileWithoutPointsGivesARectangleAndNoHomography()
         {
-            var path = Path.Combine(Path.GetTempPath(), Path.GetRandomFileName());
-            try
+            using var file = new TempFile();
+            // Exactly what every calibration written before this version looks like.
+            File.WriteAllLines(file.Path, new[]
             {
-                // Exactly what every calibration written before this version looks like.
-                File.WriteAllLines(path, new[]
-                {
-                    "RawMinX=200", "RawMaxX=1800",
-                    "RawMinY=200", "RawMaxY=1800",
-                    "ScreenW=1920", "ScreenH=1080", "InvertY=1"
-                });
+                "RawMinX=200", "RawMaxX=1800",
+                "RawMinY=200", "RawMaxY=1800",
+                "ScreenW=1920", "ScreenH=1080", "InvertY=1"
+            });
 
-                var loaded = CalibrationFile.Load(path);
+            var loaded = CalibrationFile.Load(file.Path);
 
-                Assert.NotNull(loaded);
-                Assert.Empty(loaded.Points);
-                Assert.Null(loaded.Homography);
-                Assert.True(loaded.Rect.IsValid());
-            }
-            finally { File.Delete(path); }
+            Assert.NotNull(loaded);
+            Assert.Empty(loaded.Points);
+            Assert.Null(loaded.Homography);
+            Assert.True(loaded.Rect.IsValid());
         }
 
         [Fact]
@@ -188,7 +181,8 @@ namespace Guncon3.Core.Tests
             // so this exercises Load's own missing-file branch directly — deleting that
             // check would raise FileNotFoundException from File.ReadAllLines, which
             // nothing else asserts against.
-            Assert.Null(CalibrationFile.Load(Path.Combine(Path.GetTempPath(), "no-such-" + Path.GetRandomFileName())));
+            using var file = new TempFile("no-such-");
+            Assert.Null(CalibrationFile.Load(file.Path));
         }
 
         /// <summary>
@@ -199,15 +193,17 @@ namespace Guncon3.Core.Tests
         /// is silently ignored), then the same validity check. This is what a build older than
         /// this branch does when it reads a file this branch wrote.
         /// </summary>
-        private static RectCalib LoadWithPreHomographyParser(string path)
+        private static RectCalib? LoadWithPreHomographyParser(string path)
         {
-            var rc = new RectCalib();
+            double rawMinX = 0, rawMaxX = 0, rawMinY = 0, rawMaxY = 0;
+            int screenW = 0, screenH = 0;
+            bool invertY = false;
             var ci = CultureInfo.InvariantCulture;
 
             foreach (var rawLine in File.ReadAllLines(path))
             {
                 var line = rawLine?.Trim();
-                if (string.IsNullOrEmpty(line) || line.StartsWith("#"))
+                if (string.IsNullOrEmpty(line) || line.StartsWith('#'))
                     continue;
 
                 var eq = line.IndexOf('=');
@@ -218,69 +214,63 @@ namespace Guncon3.Core.Tests
 
                 switch (key)
                 {
-                    case "RawMinX": if (double.TryParse(val, NumberStyles.Float, ci, out var rminx)) rc.RawMinX = rminx; break;
-                    case "RawMaxX": if (double.TryParse(val, NumberStyles.Float, ci, out var rmaxx)) rc.RawMaxX = rmaxx; break;
-                    case "RawMinY": if (double.TryParse(val, NumberStyles.Float, ci, out var rminy)) rc.RawMinY = rminy; break;
-                    case "RawMaxY": if (double.TryParse(val, NumberStyles.Float, ci, out var rmaxy)) rc.RawMaxY = rmaxy; break;
-                    case "ScreenW": if (int.TryParse(val, NumberStyles.Integer, ci, out var sw)) rc.ScreenW = sw; break;
-                    case "ScreenH": if (int.TryParse(val, NumberStyles.Integer, ci, out var sh)) rc.ScreenH = sh; break;
-                    case "InvertY": rc.InvertY = (val == "1" || val.Equals("true", StringComparison.OrdinalIgnoreCase)); break;
+                    case "RawMinX": if (double.TryParse(val, NumberStyles.Float, ci, out var rminx)) rawMinX = rminx; break;
+                    case "RawMaxX": if (double.TryParse(val, NumberStyles.Float, ci, out var rmaxx)) rawMaxX = rmaxx; break;
+                    case "RawMinY": if (double.TryParse(val, NumberStyles.Float, ci, out var rminy)) rawMinY = rminy; break;
+                    case "RawMaxY": if (double.TryParse(val, NumberStyles.Float, ci, out var rmaxy)) rawMaxY = rmaxy; break;
+                    case "ScreenW": if (int.TryParse(val, NumberStyles.Integer, ci, out var sw)) screenW = sw; break;
+                    case "ScreenH": if (int.TryParse(val, NumberStyles.Integer, ci, out var sh)) screenH = sh; break;
+                    case "InvertY": invertY = (val == "1" || val.Equals("true", StringComparison.OrdinalIgnoreCase)); break;
                 }
             }
 
+            var rc = new RectCalib { RawMinX = rawMinX, RawMaxX = rawMaxX, RawMinY = rawMinY, RawMaxY = rawMaxY, ScreenW = screenW, ScreenH = screenH, InvertY = invertY };
             return rc.IsValid() ? rc : null;
         }
 
         [Fact]
         public void Save_WritesTheDerivedFieldsSoOlderBuildsCanStillReadIt()
         {
-            var path = Path.Combine(Path.GetTempPath(), Path.GetRandomFileName());
-            try
-            {
-                var file = CalibrationFile.FromCapture(Keystone(), 1920, 1080);
-                file.Save(path);
+            using var file = new TempFile();
 
-                // What an older build — one that never heard of P0..P4 or the homography —
-                // recovers from a file this build wrote.
-                var oldRect = LoadWithPreHomographyParser(path);
+            var calFile = CalibrationFile.FromCapture(Fixtures.Keystone(), 1920, 1080);
+            calFile.Save(file.Path);
 
-                Assert.NotNull(oldRect);
-                Assert.Equal(file.Rect.RawMinX, oldRect.RawMinX);
-                Assert.Equal(file.Rect.RawMaxX, oldRect.RawMaxX);
-                Assert.Equal(file.Rect.RawMinY, oldRect.RawMinY);
-                Assert.Equal(file.Rect.RawMaxY, oldRect.RawMaxY);
-                Assert.Equal(file.Rect.ScreenW, oldRect.ScreenW);
-                Assert.Equal(file.Rect.ScreenH, oldRect.ScreenH);
-                Assert.Equal(file.Rect.InvertY, oldRect.InvertY);
+            // What an older build — one that never heard of P0..P4 or the homography —
+            // recovers from a file this build wrote.
+            var oldRect = LoadWithPreHomographyParser(file.Path);
 
-                // Same mapping as the current Rect path would give, not merely the same fields.
-                Assert.Equal(file.Rect.MapNormalized(0, 0), oldRect.MapNormalized(0, 0));
-                Assert.Equal(file.Rect.MapNormalized(1000, 1000), oldRect.MapNormalized(1000, 1000));
-                Assert.Equal(file.Rect.MapNormalized(1800, 400), oldRect.MapNormalized(1800, 400));
-            }
-            finally { File.Delete(path); }
+            Assert.NotNull(oldRect);
+            Assert.Equal(calFile.Rect.RawMinX, oldRect.RawMinX);
+            Assert.Equal(calFile.Rect.RawMaxX, oldRect.RawMaxX);
+            Assert.Equal(calFile.Rect.RawMinY, oldRect.RawMinY);
+            Assert.Equal(calFile.Rect.RawMaxY, oldRect.RawMaxY);
+            Assert.Equal(calFile.Rect.ScreenW, oldRect.ScreenW);
+            Assert.Equal(calFile.Rect.ScreenH, oldRect.ScreenH);
+            Assert.Equal(calFile.Rect.InvertY, oldRect.InvertY);
+
+            // Same mapping as the current Rect path would give, not merely the same fields.
+            Assert.Equal(calFile.Rect.MapNormalized(0, 0), oldRect.MapNormalized(0, 0));
+            Assert.Equal(calFile.Rect.MapNormalized(1000, 1000), oldRect.MapNormalized(1000, 1000));
+            Assert.Equal(calFile.Rect.MapNormalized(1800, 400), oldRect.MapNormalized(1800, 400));
         }
 
         [Fact]
         public void Load_RejectsTheWholeFileWhenAPointLineIsMalformed()
         {
-            var path = Path.Combine(Path.GetTempPath(), Path.GetRandomFileName());
-            try
+            using var file = new TempFile();
+            File.WriteAllLines(file.Path, new[]
             {
-                File.WriteAllLines(path, new[]
-                {
-                    "P0=200,1800", "P1=1800,1600", "P2=notanumber,400",
-                    "P3=200,200", "P4=1000,1000",
-                    "RawMinX=200", "RawMaxX=1800",
-                    "RawMinY=200", "RawMaxY=1800",
-                    "ScreenW=1920", "ScreenH=1080", "InvertY=1"
-                });
+                "P0=200,1800", "P1=1800,1600", "P2=notanumber,400",
+                "P3=200,200", "P4=1000,1000",
+                "RawMinX=200", "RawMaxX=1800",
+                "RawMinY=200", "RawMaxY=1800",
+                "ScreenW=1920", "ScreenH=1080", "InvertY=1"
+            });
 
-                Assert.Null(CalibrationFile.Load(path));
-                Assert.Equal(CalibrationLoad.Malformed, CalibrationFile.TryLoad(path, 0, out var c));
-                Assert.Null(c);
-            }
-            finally { File.Delete(path); }
+            Assert.Null(CalibrationFile.Load(file.Path));
+            Assert.Equal(CalibrationLoad.Malformed, CalibrationFile.TryLoad(file.Path, 0, out var c));
+            Assert.Null(c);
         }
 
         [Fact]
@@ -290,95 +280,79 @@ namespace Guncon3.Core.Tests
             // HomographyCalib.MapNormalized's clamp (x < 0 / x > 1) is false for NaN, so a
             // non-finite value would otherwise escape to the caller as (NaN, NaN) rather
             // than being rejected the way the old format rejected RawMinX=NaN via IsValid().
-            var path = Path.Combine(Path.GetTempPath(), Path.GetRandomFileName());
-            try
+            using var file = new TempFile();
+            File.WriteAllLines(file.Path, new[]
             {
-                File.WriteAllLines(path, new[]
-                {
-                    "P0=NaN,1800", "P1=1800,1600", "P2=1800,400",
-                    "P3=200,200", "P4=1000,1000",
-                    "RawMinX=200", "RawMaxX=1800",
-                    "RawMinY=200", "RawMaxY=1800",
-                    "ScreenW=1920", "ScreenH=1080", "InvertY=1"
-                });
+                "P0=NaN,1800", "P1=1800,1600", "P2=1800,400",
+                "P3=200,200", "P4=1000,1000",
+                "RawMinX=200", "RawMaxX=1800",
+                "RawMinY=200", "RawMaxY=1800",
+                "ScreenW=1920", "ScreenH=1080", "InvertY=1"
+            });
 
-                Assert.Null(CalibrationFile.Load(path));
-                Assert.Equal(CalibrationLoad.Malformed, CalibrationFile.TryLoad(path, 0, out var c));
-                Assert.Null(c);
-            }
-            finally { File.Delete(path); }
+            Assert.Null(CalibrationFile.Load(file.Path));
+            Assert.Equal(CalibrationLoad.Malformed, CalibrationFile.TryLoad(file.Path, 0, out var c));
+            Assert.Null(c);
         }
 
         [Fact]
         public void Load_RejectsAPartialSetOfPoints()
         {
-            var path = Path.Combine(Path.GetTempPath(), Path.GetRandomFileName());
-            try
+            using var file = new TempFile();
+            // Four of five: a truncated write. Better rejected than half-fitted.
+            File.WriteAllLines(file.Path, new[]
             {
-                // Four of five: a truncated write. Better rejected than half-fitted.
-                File.WriteAllLines(path, new[]
-                {
-                    "P0=200,1800", "P1=1800,1600", "P2=1800,400", "P3=200,200",
-                    "RawMinX=200", "RawMaxX=1800",
-                    "RawMinY=200", "RawMaxY=1800",
-                    "ScreenW=1920", "ScreenH=1080", "InvertY=1"
-                });
+                "P0=200,1800", "P1=1800,1600", "P2=1800,400", "P3=200,200",
+                "RawMinX=200", "RawMaxX=1800",
+                "RawMinY=200", "RawMaxY=1800",
+                "ScreenW=1920", "ScreenH=1080", "InvertY=1"
+            });
 
-                Assert.Equal(CalibrationLoad.Malformed, CalibrationFile.TryLoad(path, 0, out var c));
-                Assert.Null(c);
-            }
-            finally { File.Delete(path); }
+            Assert.Equal(CalibrationLoad.Malformed, CalibrationFile.TryLoad(file.Path, 0, out var c));
+            Assert.Null(c);
         }
 
         [Fact]
         public void Load_IgnoresCommentsAndBlankLines()
         {
-            var path = Path.Combine(Path.GetTempPath(), Path.GetRandomFileName());
-            try
+            using var file = new TempFile();
+            File.WriteAllLines(file.Path, new[]
             {
-                File.WriteAllLines(path, new[]
-                {
-                    "# written by the calibration window",
-                    "",
-                    "  P0 = 200,1800  ",
-                    "P1=1800,1600", "P2=1800,400", "P3=200,200", "P4=1000,1000",
-                    "RawMinX=200", "  RawMaxX = 1800  ",
-                    "RawMinY=200", "RawMaxY=1800",
-                    "ScreenW=1920", "ScreenH=1080", "InvertY=1"
-                });
+                "# written by the calibration window",
+                "",
+                "  P0 = 200,1800  ",
+                "P1=1800,1600", "P2=1800,400", "P3=200,200", "P4=1000,1000",
+                "RawMinX=200", "  RawMaxX = 1800  ",
+                "RawMinY=200", "RawMaxY=1800",
+                "ScreenW=1920", "ScreenH=1080", "InvertY=1"
+            });
 
-                var loaded = CalibrationFile.Load(path);
+            var loaded = CalibrationFile.Load(file.Path);
 
-                Assert.NotNull(loaded);
-                Assert.Equal(200.0, loaded.Points[0].X, 6);
-                Assert.Equal(1800.0, loaded.Rect.RawMaxX);
-            }
-            finally { File.Delete(path); }
+            Assert.NotNull(loaded);
+            Assert.Equal(200.0, loaded.Points[0].X, 6);
+            Assert.Equal(1800.0, loaded.Rect.RawMaxX);
         }
 
         [Fact]
         public void Load_UsesInvariantDecimalSeparators()
         {
-            var path = Path.Combine(Path.GetTempPath(), Path.GetRandomFileName());
-            try
+            using var file = new TempFile();
+            File.WriteAllLines(file.Path, new[]
             {
-                File.WriteAllLines(path, new[]
-                {
-                    "P0=200.5,1800.25", "P1=1800,1600", "P2=1800,400",
-                    "P3=200,200", "P4=1000,1000",
-                    "RawMinX=200.5", "RawMaxX=1800",
-                    "RawMinY=200", "RawMaxY=1800",
-                    "ScreenW=1920", "ScreenH=1080", "InvertY=1"
-                });
+                "P0=200.5,1800.25", "P1=1800,1600", "P2=1800,400",
+                "P3=200,200", "P4=1000,1000",
+                "RawMinX=200.5", "RawMaxX=1800",
+                "RawMinY=200", "RawMaxY=1800",
+                "ScreenW=1920", "ScreenH=1080", "InvertY=1"
+            });
 
-                var loaded = CalibrationFile.Load(path);
+            var loaded = CalibrationFile.Load(file.Path);
 
-                Assert.NotNull(loaded);
-                Assert.Equal(200.5, loaded.Points[0].X, 6);
-                Assert.Equal(1800.25, loaded.Points[0].Y, 6);
-                Assert.Equal(200.5, loaded.Rect.RawMinX);
-            }
-            finally { File.Delete(path); }
+            Assert.NotNull(loaded);
+            Assert.Equal(200.5, loaded.Points[0].X, 6);
+            Assert.Equal(1800.25, loaded.Points[0].Y, 6);
+            Assert.Equal(200.5, loaded.Rect.RawMinX);
         }
 
         [Fact]
@@ -391,7 +365,7 @@ namespace Guncon3.Core.Tests
             // pins it for stick centres.
             var original = Thread.CurrentThread.CurrentCulture;
             Thread.CurrentThread.CurrentCulture = new CultureInfo("de-DE");
-            var path = Path.Combine(Path.GetTempPath(), Path.GetRandomFileName());
+            using var file = new TempFile();
             try
             {
                 var fractional = new List<(double X, double Y)>
@@ -399,13 +373,13 @@ namespace Guncon3.Core.Tests
                     (200.5, 1800.25), (1800, 1600), (1800, 400), (200, 200), (1000, 1000)
                 };
 
-                CalibrationFile.FromCapture(fractional, 1920, 1080).Save(path);
+                CalibrationFile.FromCapture(fractional, 1920, 1080).Save(file.Path);
 
-                var text = File.ReadAllText(path);
+                var text = File.ReadAllText(file.Path);
                 Assert.Contains("200.5,1800.25", text);
                 Assert.DoesNotContain("200,5", text);
 
-                var loaded = CalibrationFile.Load(path);
+                var loaded = CalibrationFile.Load(file.Path);
                 Assert.NotNull(loaded);
                 Assert.Equal(200.5, loaded.Points[0].X, 6);
                 Assert.Equal(1800.25, loaded.Points[0].Y, 6);
@@ -413,7 +387,6 @@ namespace Guncon3.Core.Tests
             finally
             {
                 Thread.CurrentThread.CurrentCulture = original;
-                File.Delete(path);
             }
         }
 
@@ -429,54 +402,40 @@ namespace Guncon3.Core.Tests
                 new List<(double X, double Y)> { (200, 1800), (1800, 1600), (1800, 400), (200, 200) },
                 1920, 1080);
 
-            var path = Path.Combine(Path.GetTempPath(), Path.GetRandomFileName());
-            try
-            {
-                Assert.Throws<InvalidOperationException>(() => partial.Save(path));
-                Assert.False(File.Exists(path), "a file that cannot be loaded must not be written at all");
-            }
-            finally
-            {
-                if (File.Exists(path)) File.Delete(path);
-            }
+            using var file = new TempFile();
+
+            Assert.Throws<InvalidOperationException>(() => partial.Save(file.Path));
+            Assert.False(File.Exists(file.Path), "a file that cannot be loaded must not be written at all");
         }
 
         [Fact]
         public void TryLoad_ReportsMissing()
         {
-            var path = Path.Combine(Path.GetTempPath(), "absent-" + Path.GetRandomFileName());
+            using var file = new TempFile("absent-");
 
-            Assert.Equal(CalibrationLoad.Missing, CalibrationFile.TryLoad(path, 0, out var c));
+            Assert.Equal(CalibrationLoad.Missing, CalibrationFile.TryLoad(file.Path, 0, out var c));
             Assert.Null(c);
         }
 
         [Fact]
         public void TryLoad_ReportsMalformedForAnUnusableRectangle()
         {
-            var path = Path.Combine(Path.GetTempPath(), Path.GetRandomFileName());
-            try
-            {
-                File.WriteAllLines(path, new[] { "RawMinX=100", "RawMaxX=50", "ScreenW=0" });
+            using var file = new TempFile();
+            File.WriteAllLines(file.Path, new[] { "RawMinX=100", "RawMaxX=50", "ScreenW=0" });
 
-                Assert.Equal(CalibrationLoad.Malformed, CalibrationFile.TryLoad(path, 0, out var c));
-                Assert.Null(c);
-            }
-            finally { File.Delete(path); }
+            Assert.Equal(CalibrationLoad.Malformed, CalibrationFile.TryLoad(file.Path, 0, out var c));
+            Assert.Null(c);
         }
 
         [Fact]
         public void TryLoad_ReportsOk()
         {
-            var path = Path.Combine(Path.GetTempPath(), Path.GetRandomFileName());
-            try
-            {
-                CalibrationFile.FromCapture(Keystone(), 1920, 1080).Save(path);
+            using var file = new TempFile();
+            CalibrationFile.FromCapture(Fixtures.Keystone(), 1920, 1080).Save(file.Path);
 
-                Assert.Equal(CalibrationLoad.Ok, CalibrationFile.TryLoad(path, 0, out var c));
-                Assert.NotNull(c);
-                Assert.True(c.Rect.IsValid());
-            }
-            finally { File.Delete(path); }
+            Assert.Equal(CalibrationLoad.Ok, CalibrationFile.TryLoad(file.Path, 0, out var c));
+            Assert.NotNull(c);
+            Assert.True(c.Rect.IsValid());
         }
 
         [Theory]
@@ -485,7 +444,7 @@ namespace Guncon3.Core.Tests
         [InlineData(2)]
         public void SaveAndTryLoad_AgreeOnTheDefaultPathForAGunIndex(int gunIndex)
         {
-            CalibrationFile.FromCapture(Keystone(), 1920, 1080).Save(null, gunIndex);
+            CalibrationFile.FromCapture(Fixtures.Keystone(), 1920, 1080).Save(null, gunIndex);
             try
             {
                 Assert.Equal(CalibrationLoad.Ok, CalibrationFile.TryLoad(null, gunIndex, out var loaded));

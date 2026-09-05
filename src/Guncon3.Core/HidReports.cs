@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-only
 using System.Runtime.InteropServices;
 
 namespace Guncon3.Core
@@ -31,8 +32,8 @@ namespace Guncon3.Core
     }
 
     /// <summary>
-    /// TetherScript joystick SetFeature report. 37 bytes on the wire. Field
-    /// names, types and order are taken verbatim from the vendor HVDK SDK
+    /// TetherScript joystick SetFeature report, 37 bytes on the wire. Field names, types
+    /// and order are taken verbatim from the vendor HVDK SDK
     /// (CSharp/Common/Drivers.cs, struct SetFeatureJoy) — do not alter them.
     /// </summary>
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
