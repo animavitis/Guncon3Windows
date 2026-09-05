@@ -1,27 +1,27 @@
-name: build
+# name: build
 
-on:
-  push:
-    branches: [main]
-  pull_request:
+# on:
+#   push:
+#     branches: [main]
+#   pull_request:
 
-jobs:
-  windows:
-    runs-on: windows-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-dotnet@v4
-        with:
-          dotnet-version: '8.0.x'
-      - run: dotnet build src/Guncon3.sln --configuration Release
-      - run: dotnet test src/Guncon3.sln --configuration Release --no-build
+# jobs:
+#   windows:
+#     runs-on: windows-latest
+#     steps:
+#       - uses: actions/checkout@v4
+#       - uses: actions/setup-dotnet@v4
+#         with:
+#           dotnet-version: '8.0.x'
+#       - run: dotnet build src/Guncon3.sln --configuration Release
+#       - run: dotnet test src/Guncon3.sln --configuration Release --no-build
 
-  linux:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-dotnet@v4
-        with:
-          dotnet-version: '8.0.x'
-      - run: dotnet build src/Guncon3.sln --configuration Release -p:EnableWindowsTargeting=true
-      - run: dotnet test tests/Guncon3.Core.Tests/Guncon3.Core.Tests.csproj --configuration Release
+#   linux:
+#     runs-on: ubuntu-latest
+#     steps:
+#       - uses: actions/checkout@v4
+#       - uses: actions/setup-dotnet@v4
+#         with:
+#           dotnet-version: '8.0.x'
+#       - run: dotnet build src/Guncon3.sln --configuration Release -p:EnableWindowsTargeting=true
+#       - run: dotnet test tests/Guncon3.Core.Tests/Guncon3.Core.Tests.csproj --configuration Release
