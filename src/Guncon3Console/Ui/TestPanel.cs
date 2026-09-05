@@ -17,7 +17,7 @@ namespace Guncon3Console.Ui
     /// right, what the three TetherScript feeders were last told. Passive by
     /// construction — the panel holds no engine reference, only one
     /// <see cref="GunFrame"/> and one status list through two delegates the host
-    /// supplies — and it asks for nothing while <see cref="Active"/> is false.
+    /// supplies — and it asks for nothing while <see cref="SetActive"/> was last called with false.
     /// </summary>
     internal sealed class TestPanel : UserControl
     {
@@ -30,7 +30,7 @@ namespace Guncon3Console.Ui
         /// answering).</summary>
         private const int StaleAfterMs = 500;
 
-        /// <summary>Ticks between two <see cref="StatusSource"/> reads: the connected flag does not need 30
+        /// <summary>Ticks between two <see cref="_statusSource"/> reads: the connected flag does not need 30
         /// Hz.</summary>
         private const int StatusEveryTicks = 15;
 
@@ -164,16 +164,19 @@ namespace Guncon3Console.Ui
         /// <summary>Names of the drawing panels that have already logged their one paint failure.</summary>
         private readonly HashSet<string> _paintWarned = new HashSet<string>();
 
-        /// <summary>The newest frame for a slot position, or null when there is none. Set by the host to
+        /// <summary>The newest frame for a slot position, or null when there is none. The host passes
         /// <c>App.LatestFrame</c>; called on the UI thread only.</summary>
-        public Func<int, GunFrame> FrameSource { get; set; }
+        private readonly Func<int, GunFrame> _frameSource;
 
-        /// <summary>Every gun's status. Set by the host to <c>App.Status</c>; read twice a second rather than
+        /// <summary>Every gun's status. The host passes <c>App.Status</c>; read twice a second rather than
         /// every tick, and only for the connected flag.</summary>
-        public Func<IReadOnlyList<GunStatus>> StatusSource { get; set; }
+        private readonly Func<IReadOnlyList<GunStatus>> _statusSource;
 
-        public TestPanel()
+        internal TestPanel(Func<int, GunFrame> frameSource, Func<IReadOnlyList<GunStatus>> statusSource)
         {
+            _frameSource = frameSource ?? throw new ArgumentNullException(nameof(frameSource));
+            _statusSource = statusSource ?? throw new ArgumentNullException(nameof(statusSource));
+
             _guns = new ToolStripComboBox
             {
                 DropDownStyle = ComboBoxStyle.DropDownList,
@@ -296,25 +299,21 @@ namespace Guncon3Console.Ui
             Render();
         }
 
-        /// <summary>True while this tab is the selected one on a visible window. Starts and stops the refresh
-        /// timer; the host separately tells the engine whether to publish frames at all.</summary>
-        public bool Active
+        /// <summary>Starts or stops the refresh timer. The host calls this with true while this tab is the
+        /// selected one on a visible window; it separately tells the engine whether to publish frames at all.</summary>
+        internal void SetActive(bool active)
         {
-            get => _timer.Enabled;
-            set
-            {
-                if (value == _timer.Enabled) return;
+            if (active == _timer.Enabled) return;
 
-                if (value)
-                {
-                    _statusCountdown = 0;
-                    _timer.Start();
-                    Tick();
-                }
-                else
-                {
-                    _timer.Stop();
-                }
+            if (active)
+            {
+                _statusCountdown = 0;
+                _timer.Start();
+                Tick();
+            }
+            else
+            {
+                _timer.Stop();
             }
         }
 
@@ -372,7 +371,7 @@ namespace Guncon3Console.Ui
         {
             if (IsDisposed) return;
 
-            var frame = FrameSource?.Invoke(_selected);
+            var frame = _frameSource(_selected);
             bool stale = frame != null && IsStale(frame.Timestamp);
 
             if (--_statusCountdown <= 0)
@@ -395,7 +394,7 @@ namespace Guncon3Console.Ui
 
         private bool ConnectedNow()
         {
-            var statuses = StatusSource?.Invoke();
+            var statuses = _statusSource();
             if (statuses == null || _selected < 0 || _selected >= statuses.Count)
                 return false;
 

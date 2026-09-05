@@ -2,7 +2,7 @@
 
 > Use **GunCon 3** on Windows, with calibration built in.
 
-A fork ported to **.NET 8**: the input path reworked, one thread per gun, both sticks
+A fork ported to **.NET 10**: the input path reworked, one thread per gun, both sticks
 exposed digitally and as a virtual joystick, and a window with a tray icon. Install the
 two drivers, run the executable, and it calibrates itself on first launch.
 
@@ -37,7 +37,7 @@ assignment is fixed.
 
 Windows x64, the **GunCon 3 WinUSB driver** ([`drivers/`](drivers/)), and the
 **TetherScript HID Virtual Driver Kit**, installed as Administrator, then reboot. The
-framework-dependent build also needs the **.NET 8 *Desktop* Runtime**; the plain runtime
+framework-dependent build also needs the **.NET 10 *Desktop* Runtime**; the plain runtime
 is not enough, the app is WinForms.
 
 > ⚠️ **TetherScript is a dead end, worth knowing before you invest in it.** Its SDK

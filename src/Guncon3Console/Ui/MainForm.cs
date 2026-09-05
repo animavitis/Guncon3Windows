@@ -153,18 +153,15 @@ namespace Guncon3Console.Ui
             _logPage.Controls.Add(_logBox);
             _logPage.Controls.Add(logTools);
 
-            _mapping = new MappingEditor { Dock = DockStyle.Fill };
-            _mapping.Modal = RunModal;
+            _mapping = new MappingEditor(RunModal) { Dock = DockStyle.Fill };
             _mapping.Saved += ReloadMappings;
 
             var mappingPage = new TabPage("Mapping");
             mappingPage.Controls.Add(_mapping);
 
-            _test = new TestPanel { Dock = DockStyle.Fill };
             // The panel is given two read-only delegates rather than the engine, so it cannot reach anything
             // that would need the busy guard.
-            _test.FrameSource = _app.LatestFrame;
-            _test.StatusSource = _app.Status;
+            _test = new TestPanel(_app.LatestFrame, _app.Status) { Dock = DockStyle.Fill };
 
             _testPage = new TabPage("Test");
             _testPage.Controls.Add(_test);
@@ -631,11 +628,11 @@ namespace Guncon3Console.Ui
                 // WatchFrames and LatestFrame change no engine state, so this needs no busy guard and is safe
                 // while a calibration dialog is up.
                 _app.WatchFrames(true);
-                _test.Active = true;
+                _test.SetActive(true);
             }
             else
             {
-                _test.Active = false;
+                _test.SetActive(false);
                 _app.WatchFrames(false);
             }
         }
@@ -798,7 +795,7 @@ namespace Guncon3Console.Ui
 
             _statusTimer.Stop();
             _logTimer.Stop();
-            _test.Active = false;
+            _test.SetActive(false);
             _watching = false;
             _app.WatchFrames(false);
             _app.StatusChanged -= OnStatusChanged;

@@ -12,7 +12,7 @@
 #       - uses: actions/checkout@v4
 #       - uses: actions/setup-dotnet@v4
 #         with:
-#           dotnet-version: '8.0.x'
+#           dotnet-version: '10.0.x'
 #       - run: dotnet build src/Guncon3.sln --configuration Release
 #       - run: dotnet test src/Guncon3.sln --configuration Release --no-build
 
@@ -22,6 +22,6 @@
 #       - uses: actions/checkout@v4
 #       - uses: actions/setup-dotnet@v4
 #         with:
-#           dotnet-version: '8.0.x'
+#           dotnet-version: '10.0.x'
 #       - run: dotnet build src/Guncon3.sln --configuration Release -p:EnableWindowsTargeting=true
 #       - run: dotnet test tests/Guncon3.Core.Tests/Guncon3.Core.Tests.csproj --configuration Release
