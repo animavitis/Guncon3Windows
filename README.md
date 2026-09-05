@@ -3,23 +3,20 @@
 > Use **GunCon 3** on Windows, with calibration built in.
 
 A fork ported to **.NET 10**: the input path reworked, one thread per gun, both sticks
-exposed digitally and as a virtual joystick, and a window with a tray icon. Install the
+exposed digitally and as a virtual joystick, and a GUI with a tray icon. Install the
 two drivers, run the executable, and it calibrates itself on first launch.
+
+![GonCon3 GUI](image.png)
 
 ## Features
 
-- A window and a tray icon: a row per gun with its connection, calibration and feeder
+- A GUI and a tray icon: a row per gun with its connection, calibration and feeder
   state, a live log, a mapping editor and a live test view. Closing hides it to the tray.
-- Five-point calibration (four corners and the centre) fits two mappings from one
-  capture: the linear rectangle and a projective one that holds up when the gun is off
-  the screen's axis. **H** switches live, **F12** recalibrates, and nothing is written
-  until you accept.
+- Five-point calibration (four corners and the centre) 
+  capture: the linear rectangle and a projective 
 - Both analog sticks digitalized and mappable, plus a virtual joystick with both sticks,
-  the depth axis and the nine buttons. Stick deadzones are measured from each stick's own
-  resting position on first run.
 - An unplugged gun is reported, releases its buttons and reconnects by itself.
-- Multiple guns, each on its own thread. Multi-monitor: the aim follows the monitor it
-  was calibrated on.
+- Multiple guns, each on its own thread. Multi-monitor: the aim follows the monitor it was calibrated on.
 - Local configuration files, with mapping errors reported by line number.
 
 Three virtual devices, through the TetherScript drivers:
@@ -30,20 +27,13 @@ Three virtual devices, through the TetherScript drivers:
 | keyboard | any button mapped to `KEYBOARD.*` |
 | joystick | both sticks (`X`/`Y`, `rX`/`rY`), depth (`Z`) and buttons 0-8 (Trigger, A1, A2, B1, B2, C1, C2, AClick, BClick) — always, no mapping needed |
 
-One gun button can produce a keyboard key and a joystick button at once. The joystick
-assignment is fixed.
+One gun button can produce a keyboard key and a joystick button at once. The joystick assignment is fixed.
 
 ## Requirements
 
-Windows x64, the **GunCon 3 WinUSB driver** ([`drivers/`](drivers/)), and the
-**TetherScript HID Virtual Driver Kit**, installed as Administrator, then reboot. The
-framework-dependent build also needs the **.NET 10 *Desktop* Runtime**; the plain runtime
-is not enough, the app is WinForms.
+Windows x64, the **GunCon 3 WinUSB driver** ([`drivers/`](drivers/)), and the **TetherScript HID Virtual Driver Kit**, installed as Administrator, then reboot. The framework-dependent build also needs the **.NET 10 *Desktop* Runtime**.
 
-> ⚠️ **TetherScript is a dead end, worth knowing before you invest in it.** Its SDK
-> installs only on 64-bit Windows 7, 8, 8.1 or 10, and the certificate signing the
-> drivers expired in spring 2023, so on Windows 11 they cannot be installed at all.
-> This application's whole output path depends on them.
+> ⚠️ **TetherScript is a dead end, worth knowing before you invest in it.** This application's whole output path depends on them.
 
 ## Building
 
@@ -51,14 +41,11 @@ is not enough, the app is WinForms.
 dotnet build src/Guncon3.sln
 dotnet test tests/Guncon3.Core.Tests/Guncon3.Core.Tests.csproj
 
-# release, one exe: --self-contained (~160 MB) or --self-contained false (~0.3 MB)
-dotnet publish src/Guncon3Console/Guncon3Console.csproj -c Release -r win-x64 \
-  --self-contained -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true
+# release, one exe: --self-contained (<200 MB) or --self-contained false (~0.5 MB)
+dotnet publish src/Guncon3Console/Guncon3Console.csproj -c Release -r win-x64 --self-contained -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true
 ```
 
-On macOS or Linux add `-p:EnableWindowsTargeting=true`; the tests run anywhere because
-the logic lives in the platform-neutral `Guncon3.Core`. Use the official Microsoft SDK —
-Homebrew's `dotnet@8` ships no `Microsoft.NET.Sdk.WindowsDesktop`.
+On macOS or Linux add `-p:EnableWindowsTargeting=true`;
 
 ## Running
 
@@ -79,8 +66,7 @@ exits with code 1; `keys` is never blocked.
 linear and projective mapping. The toolbar, the tray menu and those keys do the same;
 the keys need the window focused. The mode is not remembered across runs.
 
-- **Status** — device, connection, which calibration, and whether each virtual device
-  still accepts reports.
+- **Status** — device, connection, which calibration, and whether each virtual device still accepts reports.
 - **Log** — everything the app says, warnings amber, errors red, with Clear and Copy all.
 - **Test** — one gun live: both calibrated aims as crosshairs (grey raw, white linear,
   cyan projective, the live one thicker), every button and stick direction, and what the
@@ -105,10 +91,6 @@ shell's console or opens one.
 
 ### The calibration window
 
-Five targets in order — top-left, top-right, bottom-right, bottom-left, centre — then a
-check phase where you aim freely: white is the mapping the game will get, grey dashed
-the other. Accept with the one you prefer and it becomes the live mode.
-
 | phase | gun | keyboard | does |
 |---|---|---|---|
 | shooting | Trigger | Space | capture the current target |
@@ -119,10 +101,7 @@ the other. Accept with the one you prefer and it becomes the live mode.
 | any | — | D | show the raw gun coordinates |
 | any | — | ESC | cancel; the previous calibration stays |
 
-Five shots that do not span a rectangle are thrown away with a message. A mouse click
-does nothing here, because with two guns the other gun's mouse is live. The check phase
-prints the projective centre error as a fraction of the screen; above 0.05 it is
-suspect, so redo the capture.
+Five shots that do not span a rectangle are thrown away with a message. A mouse click does nothing here, because with two guns the other gun's mouse is live. The check phase prints the projective centre error as a fraction of the screen; above 0.05 it is suspect, so redo the capture.
 
 ## Button mapping
 
