@@ -10,14 +10,27 @@ namespace Guncon3Console.Ui
 {
     /// <summary>
     /// The Test Output tab: what the three virtual outputs — cursor, keys, pad — were
-    /// last told for one gun, each with the feeder's health in its caption. The gun's
-    /// own aim and buttons are the other tab, <see cref="InputTestPanel"/>.
+    /// last told for one gun, each with the feeder's health in its caption. Laid out like
+    /// <see cref="InputTestPanel"/>: two columns, the cursor and the keys on the left,
+    /// the pad on the right drawn exactly as the gun's own sticks and buttons are.
     /// </summary>
     internal sealed class OutputTestPanel : TestPanelBase
     {
         /// <summary>The nine physical buttons the joystick feeder reports, in <see cref="GunButton"/> order —
         /// exactly JoystickFeeder's own PhysicalButtons order, i.e. JoystickReportState's bit order.</summary>
         private const int JoystickButtonCount = 9;
+
+        /// <summary>The tile grid is the same six columns as the input tab's, so a button sits at the same
+        /// width on both; nine buttons need two rows of it.</summary>
+        private const int TileColumns = 6;
+        private const int TileRows = 2;
+
+        /// <summary>Bit 8 and up live in <see cref="JoystickReportState.Buttons1"/>.</summary>
+        private const int ButtonsPerByte = 8;
+
+        /// <summary>The cursor's group is a fixed height: one line of numbers, one row of half-width tiles, and
+        /// the group's own caption and border. The key list below it takes everything else.</summary>
+        private const int MouseGroupHeightPx = 96;
 
         // ----------------------------------------------------------------- text
 
@@ -43,7 +56,7 @@ namespace Guncon3Console.Ui
         private readonly GroupBox _keyboardGroup;
         private readonly Label _keyboardKeys;
         private readonly GroupBox _joystickGroup;
-        private readonly DrawPanel _joyBars;
+        private readonly DrawPanel _joySticks;
         private readonly Label[] _joyTiles = new Label[JoystickButtonCount];
 
         /// <summary>Says "stale" or "disconnected" when the numbers above are not being refreshed. The aim
@@ -71,32 +84,49 @@ namespace Guncon3Console.Ui
             _keyboardGroup = new GroupBox { Dock = DockStyle.Fill, Text = KeyboardGroupName };
             _keyboardGroup.Controls.Add(_keyboardKeys);
 
-            _joyBars = new DrawPanel { Dock = DockStyle.Fill, BackColor = SystemColors.Control };
-            _joyBars.Paint += (_, e) => SafePaint(e.Graphics, PaintJoystickBars, "joystick bars");
+            // The cursor's four numbers and three tiles are a fixed height; the key list grows to six lines, so
+            // it takes what is left.
+            var left = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 2 };
+            left.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100f));
+            left.RowStyles.Add(new RowStyle(SizeType.Absolute, MouseGroupHeightPx));
+            left.RowStyles.Add(new RowStyle(SizeType.Percent, 100f));
+            left.Controls.Add(_mouseGroup, 0, 0);
+            left.Controls.Add(_keyboardGroup, 0, 1);
 
-            var joyTiles = new FlowLayoutPanel
+            var tileGrid = new TableLayoutPanel
             {
-                Dock = DockStyle.Bottom,
-                Height = 2 * (TileHeightPx + 2 * TileMarginPx) + 2
+                Dock = DockStyle.Top,
+                ColumnCount = TileColumns,
+                RowCount = TileRows,
+                Height = TileRows * (TileHeightPx + 2 * TileMarginPx) + 2
             };
+            for (int i = 0; i < TileColumns; i++)
+                tileGrid.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100f / TileColumns));
+            for (int i = 0; i < TileRows; i++)
+                tileGrid.RowStyles.Add(new RowStyle(SizeType.Absolute, TileHeightPx + 2 * TileMarginPx));
+
             for (int i = 0; i < _joyTiles.Length; i++)
             {
+                // The pad's bit order is the physical buttons in GunButton order, so the first nine names of
+                // the input tab's grid are these nine, in these positions.
                 _joyTiles[i] = Tile(((GunButton)i).ToString());
-                joyTiles.Controls.Add(_joyTiles[i]);
+                _joyTiles[i].Dock = DockStyle.Fill;
+                tileGrid.Controls.Add(_joyTiles[i], i % TileColumns, i / TileColumns);
             }
 
-            _joystickGroup = new GroupBox { Dock = DockStyle.Fill, Text = JoystickGroupName };
-            _joystickGroup.Controls.Add(_joyBars);
-            _joystickGroup.Controls.Add(joyTiles);
+            _joySticks = new DrawPanel { Dock = DockStyle.Fill, BackColor = SystemColors.Control };
+            _joySticks.Paint += (_, e) => SafePaint(e.Graphics, PaintPadSticks, "pad sticks");
 
-            var outputs = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 3 };
-            outputs.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100f));
-            outputs.RowStyles.Add(new RowStyle(SizeType.Percent, 26f));
-            outputs.RowStyles.Add(new RowStyle(SizeType.Percent, 30f));
-            outputs.RowStyles.Add(new RowStyle(SizeType.Percent, 44f));
-            outputs.Controls.Add(_mouseGroup, 0, 0);
-            outputs.Controls.Add(_keyboardGroup, 0, 1);
-            outputs.Controls.Add(_joystickGroup, 0, 2);
+            _joystickGroup = new GroupBox { Dock = DockStyle.Fill, Text = JoystickGroupName };
+            _joystickGroup.Controls.Add(_joySticks);
+            _joystickGroup.Controls.Add(tileGrid);
+
+            var columns = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 2, RowCount = 1 };
+            columns.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50f));
+            columns.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50f));
+            columns.RowStyles.Add(new RowStyle(SizeType.Percent, 100f));
+            columns.Controls.Add(left, 0, 0);
+            columns.Controls.Add(_joystickGroup, 1, 0);
 
             _state = new Label
             {
@@ -109,7 +139,7 @@ namespace Guncon3Console.Ui
             };
 
             var host = new Panel { Dock = DockStyle.Fill };
-            host.Controls.Add(outputs);
+            host.Controls.Add(columns);
             host.Controls.Add(_state);
 
             Compose(host);
@@ -137,9 +167,9 @@ namespace Guncon3Console.Ui
 
             for (int i = 0; i < _joyTiles.Length; i++)
             {
-                bool lit = frame != null && (i < 8
+                bool lit = frame != null && (i < ButtonsPerByte
                     ? (frame.Joystick.Report.Buttons0 & (1 << i)) != 0
-                    : (frame.Joystick.Report.Buttons1 & (1 << (i - 8))) != 0);
+                    : (frame.Joystick.Report.Buttons1 & (1 << (i - ButtonsPerByte))) != 0);
                 _joyTiles[i].BackColor = Lit(lit);
             }
 
@@ -159,7 +189,7 @@ namespace Guncon3Console.Ui
                 _state.ForeColor = SystemColors.ControlText;
             }
 
-            _joyBars.Invalidate();
+            _joySticks.Invalidate();
         }
 
         private static void SetGroupHealth(GroupBox group, string name, bool? healthy)
@@ -192,28 +222,31 @@ namespace Guncon3Console.Ui
 
         // ----------------------------------------------------------------- painting
 
-        private void PaintJoystickBars(Graphics g)
+        /// <summary>The pad's two sticks and its depth axis, drawn as the gun's own are. No arrows: the report
+        /// carries axes, not directions — what digitising there was happened before it.</summary>
+        private void PaintPadSticks(Graphics g)
         {
             var frame = Frame;
             var report = frame?.Joystick.Report ?? default;
 
-            int width = Math.Max(0, _joyBars.ClientSize.Width - 2 * BoxMarginPx);
-            int y = BarGapPx;
-
-            AxisBar(g, width, ref y, "X", frame == null ? null : report.X);
-            AxisBar(g, width, ref y, "Y", frame == null ? null : report.Y);
-            AxisBar(g, width, ref y, "RX", frame == null ? null : report.RX);
-            AxisBar(g, width, ref y, "RY", frame == null ? null : report.RY);
-            AxisBar(g, width, ref y, "Z", frame == null ? null : report.Z);
+            PaintSticks(g, _joySticks,
+                Stick(LeftStickCaption, frame == null ? null : report.X, frame == null ? null : report.Y),
+                Stick(RightStickCaption, frame == null ? null : report.RX, frame == null ? null : report.RY),
+                frame == null ? 0 : report.Z / (double)StickDigitizer.AxisMax,
+                frame == null ? Missing : report.Z.ToString(CultureInfo.InvariantCulture));
         }
 
-        private void AxisBar(Graphics g, int width, ref int y, string label, ushort? value)
-        {
-            Bar(g, new Rectangle(BoxMarginPx, y, width, BarHeightPx), label,
-                value == null ? 0 : value.Value / (double)StickDigitizer.AxisMax,
-                value == null ? Missing : value.Value.ToString(CultureInfo.InvariantCulture));
-
-            y += BarHeightPx + BarGapPx;
-        }
+        /// <summary>One stick as the base class wants it: the two report axes on 0..1, with the numbers the
+        /// bars used to carry drawn inside the pad.</summary>
+        private static StickPicture Stick(string caption, ushort? axisX, ushort? axisY)
+            => new StickPicture(
+                caption,
+                axisX == null ? null : axisX.Value / (double)StickDigitizer.AxisMax,
+                axisY == null ? null : axisY.Value / (double)StickDigitizer.AxisMax,
+                0,
+                0,
+                axisX == null || axisY == null
+                    ? Missing
+                    : string.Create(CultureInfo.InvariantCulture, $"{axisX.Value}, {axisY.Value}"));
     }
 }

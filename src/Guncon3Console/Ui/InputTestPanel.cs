@@ -29,14 +29,9 @@ namespace Guncon3Console.Ui
         private const int BoxTextPadPx = 6;
         private const int AimTextLines = 4;
 
-        // -------------------------------------------------------- sticks, bars
+        // -------------------------------------------------------------- sticks
 
-        private const int PadSizePx = 116;
-        private const int PadGapPx = 14;
-        private const int PadTopPx = 16;
-        private const int PointRadiusPx = 4;
-        private const int ArrowLengthPx = 38;
-        private const float ArrowWidth = 2f;
+        /// <summary>The gun's own stick and depth axes, before any digitisation.</summary>
         private const int RawAxisMax = 255;
 
         // ---------------------------------------------------------------- tiles
@@ -50,9 +45,6 @@ namespace Guncon3Console.Ui
         private const string NoHomography = "no homography";
         private const string StaleText = "stale";
         private const string DisconnectedText = "disconnected";
-        private const string LeftStickCaption = "Left stick";
-        private const string RightStickCaption = "Right stick";
-        private const string DepthCaption = "Z";
         private const string PairFormat = "0.000";
         private const string PercentFormat = "0.0";
 
@@ -84,9 +76,7 @@ namespace Guncon3Console.Ui
         private readonly Pen _homographyActivePen = new Pen(HomographyColour, ActiveCrosshairWidth);
         private readonly Pen _dimPen = new Pen(DimColour, CrosshairWidth);
         private readonly Pen _dimActivePen = new Pen(DimColour, ActiveCrosshairWidth);
-        private readonly Pen _arrowPen = new Pen(BarFillColour, ArrowWidth) { EndCap = LineCap.ArrowAnchor };
         private readonly SolidBrush _aimBackBrush = new SolidBrush(AimBackColour);
-        private readonly SolidBrush _pointBrush = new SolidBrush(RectColour);
 
         internal InputTestPanel(Func<int, GunFrame> frameSource, Func<IReadOnlyList<GunStatus>> statusSource)
             : base(frameSource, statusSource)
@@ -130,7 +120,7 @@ namespace Guncon3Console.Ui
             }
 
             _sticks = new DrawPanel { Dock = DockStyle.Fill, BackColor = SystemColors.Control };
-            _sticks.Paint += (_, e) => SafePaint(e.Graphics, PaintSticks, "stick pads");
+            _sticks.Paint += (_, e) => SafePaint(e.Graphics, PaintGunSticks, "stick pads");
 
             var gunHost = new Panel { Dock = DockStyle.Fill };
             gunHost.Controls.Add(_sticks);
@@ -277,65 +267,35 @@ namespace Guncon3Console.Ui
             g.DrawLine(pen, x, y - arm, x, y + arm);
         }
 
-        private void PaintSticks(Graphics g)
+        private void PaintGunSticks(Graphics g)
         {
-            g.SmoothingMode = SmoothingMode.AntiAlias;
-
             var frame = Frame;
-            var left = new Rectangle(BoxMarginPx, PadTopPx, PadSizePx, PadSizePx);
-            var right = new Rectangle(left.Right + PadGapPx, PadTopPx, PadSizePx, PadSizePx);
 
-            Pad(g, left, LeftStickCaption, frame?.HatX, frame?.HatY,
-                Pressed(frame, GunButton.LUp), Pressed(frame, GunButton.LDown),
-                Pressed(frame, GunButton.LLeft), Pressed(frame, GunButton.LRight));
-
-            Pad(g, right, RightStickCaption, frame?.RX, frame?.RY,
-                Pressed(frame, GunButton.RUp), Pressed(frame, GunButton.RDown),
-                Pressed(frame, GunButton.RLeft), Pressed(frame, GunButton.RRight));
-
-            var bar = new Rectangle(BoxMarginPx, left.Bottom + PadGapPx,
-                Math.Max(0, _sticks.ClientSize.Width - 2 * BoxMarginPx), BarHeightPx);
-
-            Bar(g, bar, DepthCaption,
+            PaintSticks(g, _sticks,
+                Stick(LeftStickCaption, frame?.HatX, frame?.HatY,
+                      Pressed(frame, GunButton.LUp), Pressed(frame, GunButton.LDown),
+                      Pressed(frame, GunButton.LLeft), Pressed(frame, GunButton.LRight)),
+                Stick(RightStickCaption, frame?.RX, frame?.RY,
+                      Pressed(frame, GunButton.RUp), Pressed(frame, GunButton.RDown),
+                      Pressed(frame, GunButton.RLeft), Pressed(frame, GunButton.RRight)),
                 frame == null ? 0 : frame.Z / (double)RawAxisMax,
                 frame == null ? Missing : frame.Z.ToString(CultureInfo.InvariantCulture));
         }
 
+        /// <summary>One stick as the base class wants it: the two raw axes on 0..1 and the four digitised
+        /// direction flags reduced to a sign per axis.</summary>
+        private static StickPicture Stick(string caption, int? axisX, int? axisY,
+                                          bool up, bool down, bool leftward, bool rightward)
+            => new StickPicture(
+                caption,
+                axisX == null ? null : axisX.Value / (double)RawAxisMax,
+                axisY == null ? null : axisY.Value / (double)RawAxisMax,
+                (rightward ? 1 : 0) - (leftward ? 1 : 0),
+                (down ? 1 : 0) - (up ? 1 : 0),
+                null);
+
         private static bool Pressed(GunFrame frame, GunButton button)
             => frame != null && (int)button < frame.Buttons.Length && frame.Buttons[(int)button];
-
-        /// <summary>
-        /// One stick: the raw point at axis/255 and, when the reader digitised a
-        /// direction, an arrow from the centre. The direction comes from the frame's
-        /// button flags — the gun's own digitisation, deadzone and measured centres
-        /// included — so nothing here re-derives them.
-        /// </summary>
-        private void Pad(Graphics g, Rectangle box, string caption, int? axisX, int? axisY,
-                         bool up, bool down, bool leftward, bool rightward)
-        {
-            g.DrawString(caption, Small, SystemBrushes.ControlText, box.X, box.Y - Small.Height);
-            g.DrawRectangle(PadBorderPen, box);
-            g.DrawLine(PadBorderPen, box.X, box.Y + box.Height / 2, box.Right, box.Y + box.Height / 2);
-            g.DrawLine(PadBorderPen, box.X + box.Width / 2, box.Y, box.X + box.Width / 2, box.Bottom);
-
-            if (axisX == null || axisY == null) return;
-
-            float px = box.X + (float)(Clamp01(axisX.Value / (double)RawAxisMax) * box.Width);
-            float py = box.Y + (float)(Clamp01(axisY.Value / (double)RawAxisMax) * box.Height);
-            g.FillEllipse(_pointBrush, px - PointRadiusPx, py - PointRadiusPx, PointRadiusPx * 2, PointRadiusPx * 2);
-            g.DrawEllipse(PadBorderPen, px - PointRadiusPx, py - PointRadiusPx, PointRadiusPx * 2, PointRadiusPx * 2);
-
-            int dx = (rightward ? 1 : 0) - (leftward ? 1 : 0);
-            int dy = (down ? 1 : 0) - (up ? 1 : 0);
-            if (dx == 0 && dy == 0) return;
-
-            float cx = box.X + box.Width / 2f;
-            float cy = box.Y + box.Height / 2f;
-            double length = Math.Sqrt(dx * dx + dy * dy);
-            g.DrawLine(_arrowPen, cx, cy,
-                cx + (float)(dx / length * ArrowLengthPx),
-                cy + (float)(dy / length * ArrowLengthPx));
-        }
 
         protected override void DisposeResources()
         {
@@ -348,9 +308,7 @@ namespace Guncon3Console.Ui
             _homographyActivePen.Dispose();
             _dimPen.Dispose();
             _dimActivePen.Dispose();
-            _arrowPen.Dispose();
             _aimBackBrush.Dispose();
-            _pointBrush.Dispose();
 
             base.DisposeResources();
         }
