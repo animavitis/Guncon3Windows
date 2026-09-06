@@ -104,6 +104,10 @@ namespace Guncon3Console.Ui
             _settings = settings ?? throw new ArgumentNullException(nameof(settings));
             _fileSink = fileSink;
 
+            // Start() has already connected whatever guns are here; the setter reaches them and every gun that
+            // connects later.
+            _app.ZThreshold = _settings.ZThreshold;
+
             Icon = AppIcon.Value;
             ClientSize = new Size(880, 520);
             MinimumSize = new Size(560, 320);
@@ -796,6 +800,7 @@ namespace Guncon3Console.Ui
             if (wanted == _settings) return;    // record equality: nothing was changed
 
             ApplyLogToFile(wanted.LogToFile);
+            _app.ZThreshold = wanted.ZThreshold;
 
             // What is stored is what actually happened: a log file that would not open leaves the option off.
             _settings = wanted with { LogToFile = _fileSink != null };

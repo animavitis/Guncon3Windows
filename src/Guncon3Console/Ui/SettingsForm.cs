@@ -9,9 +9,9 @@ using Guncon3Console.Logging;
 
 namespace Guncon3Console.Ui
 {
-    /// <summary>Three checkboxes. Two of them live in settings.txt; "Run at Windows logon" is the registry
-    /// entry, read when the dialog opens and applied on OK — the registry is the source of truth for it, so a
-    /// value removed by some startup manager shows here as off.</summary>
+    /// <summary>Three checkboxes and one number. All but one live in settings.txt; "Run at Windows logon" is
+    /// the registry entry, read when the dialog opens and applied on OK — the registry is the source of truth
+    /// for it, so a value removed by some startup manager shows here as off.</summary>
     /// <remarks>
     /// Laid out rather than positioned: the log path and the registry's own error message are both as long as
     /// the machine makes them, and at a fixed 460 px with fixed control positions either one was cut to an
@@ -28,10 +28,15 @@ namespace Guncon3Console.Ui
         private const int NoteMaxWidthPx = 520;
 
         private const int MinWidthPx = 420;
+        private const int ThresholdBoxWidthPx = 84;
+
+        /// <summary>Lifts the caption onto the same baseline as the box beside it.</summary>
+        private const int ThresholdLabelTopPx = 4;
 
         private readonly CheckBox _startMinimized;
         private readonly CheckBox _autostart;
         private readonly CheckBox _logToFile;
+        private readonly NumericUpDown _zThreshold;
 
         /// <summary>Why "Run at Windows logon" is greyed out, when it is. Hidden otherwise.</summary>
         private readonly Label _autostartNote;
@@ -65,6 +70,33 @@ namespace Guncon3Console.Ui
 
             _autostartNote = Note(string.Empty);
             _autostartNote.Visible = false;
+
+            // A number rather than a checkbox, and one nothing here can pick for the user: where "near" ends
+            // depends on where they stand. The note under it says where to read the value off.
+            _zThreshold = new NumericUpDown
+            {
+                Minimum = DepthDigitizer.MinThreshold,
+                Maximum = DepthDigitizer.MaxThreshold,
+                Value = Math.Clamp(settings.ZThreshold, DepthDigitizer.MinThreshold, DepthDigitizer.MaxThreshold),
+                Width = ThresholdBoxWidthPx,
+                Margin = new Padding(IndentPx, 0, 0, 0)
+            };
+
+            var zRow = new FlowLayoutPanel
+            {
+                FlowDirection = FlowDirection.LeftToRight,
+                Dock = DockStyle.Fill,
+                AutoSize = true,
+                AutoSizeMode = AutoSizeMode.GrowAndShrink,
+                Margin = new Padding(0, GapPx, 0, 0)
+            };
+            zRow.Controls.Add(new Label
+            {
+                Text = "Depth threshold for the ZLow / ZHigh mappings",
+                AutoSize = true,
+                Margin = new Padding(0, ThresholdLabelTopPx, 0, 0)
+            });
+            zRow.Controls.Add(_zThreshold);
 
             var ok = new Button
             {
@@ -112,6 +144,9 @@ namespace Guncon3Console.Ui
             layout.Controls.Add(_autostartNote);
             layout.Controls.Add(_logToFile);
             layout.Controls.Add(Note(FileSink.FilePath));
+            layout.Controls.Add(zRow);
+            layout.Controls.Add(Note("Read the live Z beside the bar on the Test Input tab and set this from it; "
+                                   + "bind ZLow and ZHigh in mapping.txt."));
             layout.Controls.Add(buttons);
 
             Controls.Add(layout);
@@ -153,7 +188,8 @@ namespace Guncon3Console.Ui
             Result = new Settings
             {
                 StartMinimized = _startMinimized.Checked,
-                LogToFile = _logToFile.Checked
+                LogToFile = _logToFile.Checked,
+                ZThreshold = (int)_zThreshold.Value
             };
         }
 

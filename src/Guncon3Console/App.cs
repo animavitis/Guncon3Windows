@@ -40,10 +40,29 @@ namespace Guncon3Console
     {
         private readonly List<GunSlot> _slots = new();
         private CalibrationMode _mode = CalibrationMode.Rect;
+        private int _zThreshold = DepthDigitizer.DefaultThreshold;
         private volatile bool _shutdown;
 
         /// <summary>Which of a calibration's two mappings every gun is aiming through.</summary>
         public CalibrationMode Mode => _mode;
+
+        /// <summary>
+        /// Where every gun's depth reading splits into <see cref="GunButton.ZLow"/> and
+        /// <see cref="GunButton.ZHigh"/>. Set from settings.txt at startup and again whenever the settings
+        /// dialog is accepted; kept here as well as on the readers so that a gun connecting later gets it too.
+        /// Changes no engine state and takes no locks, so it needs no busy guard.
+        /// </summary>
+        public int ZThreshold
+        {
+            get => _zThreshold;
+            set
+            {
+                _zThreshold = DepthDigitizer.Clamp(value);
+
+                foreach (var slot in _slots)
+                    slot.Gun.Reader.ZThreshold = _zThreshold;
+            }
+        }
 
         /// <summary>
         /// The window the calibration dialog is modal to; the console host leaves it
@@ -186,7 +205,7 @@ namespace Guncon3Console
             try
             {
                 Log.Line($"Gun {index + 1} connecting...");
-                var reader = new GunconReader();
+                var reader = new GunconReader { ZThreshold = _zThreshold };
                 reader.Connect(device);
                 _slots.Add(new GunSlot(new GunInstance(index, reader)));
                 Log.Line($"Gun {index + 1} connected.");

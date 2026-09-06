@@ -6,6 +6,9 @@
 #guncommand can be Trigger, A1, A2, B1, B2, C1, C2, AClick, BClick,
 #  left stick:  LUp, LDown, LLeft, LRight
 #  right stick: RUp, RDown, RLeft, RRight
+#  depth axis:  ZLow (nearer than the threshold), ZHigh (further than it)
+#ZLow and ZHigh split at settings.txt's ZThreshold, with a dead band either side of it.
+#Read the live Z beside the bar on the Test Input tab and set the threshold from it.
 #names are case-insensitive on both sides of the '='
 #any line that cannot be understood is reported on startup with its line number
 
@@ -26,3 +29,7 @@ KEYBOARD.79=LRight
 #KEYBOARD.22=RDown
 #KEYBOARD.4=RLeft
 #KEYBOARD.7=RRight
+
+#So is the depth axis. Set ZThreshold in settings.txt before binding either of these:
+#KEYBOARD.44=ZLow
+#KEYBOARD.43=ZHigh

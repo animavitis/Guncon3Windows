@@ -117,9 +117,9 @@ live and lets you pick either one directly. The mode is not remembered across ru
   and tray menus. Plug one in, press it, and the session carries on. No restart.
 
 **File → Settings…** writes `settings.txt`: start minimised to the tray, run at Windows
-logon (`HKCU\Software\Microsoft\Windows\CurrentVersion\Run`), and write the log to
-`guncon3.log`. It is `key=value`, `#` for comments, keys case-insensitive, unknown keys
-left alone.
+logon (`HKCU\Software\Microsoft\Windows\CurrentVersion\Run`), write the log to
+`guncon3.log`, and the depth threshold the `ZLow` / `ZHigh` mappings split on. It is
+`key=value`, `#` for comments, keys case-insensitive, unknown keys left alone.
 
 `--console` keeps the old behaviour: the log in the console window, **F12** / **R** /
 **H** / **ESC** as console keys while it has focus, **Ctrl+C** and **Ctrl+Break** to
@@ -149,8 +149,15 @@ reported on startup with its line number.
 
 Gun commands are the nine buttons `Trigger`, `A1`, `A2`, `B1`, `B2`, `C1`, `C2`,
 `AClick`, `BClick`, plus the stick directions `LUp` / `LDown` / `LLeft` / `LRight` and
-`RUp` / `RDown` / `RLeft` / `RRight`. Keyboard codes come from `Guncon3Console.exe keys`,
-also in [docs/keycodes.txt](docs/keycodes.txt).
+`RUp` / `RDown` / `RLeft` / `RRight`, and the depth pair `ZLow` / `ZHigh`. Keyboard codes
+come from `Guncon3Console.exe keys`, also in [docs/keycodes.txt](docs/keycodes.txt).
+
+`ZLow` and `ZHigh` are the depth axis digitised the way the sticks are, but around a
+threshold you set rather than a measured centre: nothing can know how far you stand from
+the screen. `ZLow` is held while the reading is below `ZThreshold`, `ZHigh` while it is
+above, and neither inside a dead band either side of it, so a reading that wobbles does
+not chatter a bound key. Read the live value beside the Z bar on the **Test Input** tab
+and set the threshold in **File → Settings…**. Both are unbound out of the box.
 
 Keys are sent by physical position (scan code), so on a non-US layout a label names the US
 key at that position: `a` fires the key that is `q` on AZERTY.

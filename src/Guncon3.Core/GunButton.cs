@@ -26,7 +26,12 @@ namespace Guncon3.Core
         RUp,
         RDown,
         RLeft,
-        RRight
+        RRight,
+
+        // "Digitalized" depth axis. Last on purpose: the joystick feeder's report bits and every saved
+        // mapping are indexed by this enum, so a new member may only ever be appended.
+        ZLow,
+        ZHigh
     }
 
     public static class GunButtons
@@ -34,6 +39,6 @@ namespace Guncon3.Core
         /// <summary>Number of <see cref="GunButton"/> members. The enum is contiguous from 0, so a
         /// <c>bool[Count]</c> indexed by <c>(int)button</c> holds one flag per button without a dictionary
         /// lookup.</summary>
-        public const int Count = 17;
+        public const int Count = 19;
     }
 }

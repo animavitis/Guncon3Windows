@@ -65,6 +65,19 @@ namespace Guncon3Console
 
         private StickCentres _centres = new StickCentres();
         private bool _measuringCentres = true;
+
+        /// <summary>Where <see cref="GunButton.ZLow"/> and <see cref="GunButton.ZHigh"/> split. Written from
+        /// the UI thread when settings change and read on this reader's own thread, so it is volatile; an int
+        /// cannot tear, and a digitisation that uses the old value for one packet is not worth a lock.</summary>
+        private volatile int _zThreshold = DepthDigitizer.DefaultThreshold;
+
+        /// <summary>The depth threshold in raw reading units. Anything implausible is refused in favour of the
+        /// default rather than left to make one of the two directions permanent.</summary>
+        public int ZThreshold
+        {
+            get => _zThreshold;
+            set => _zThreshold = DepthDigitizer.Clamp(value);
+        }
         private bool _centresJustMeasured;
 
         public GunState State { get; } = new GunState();
@@ -318,6 +331,13 @@ namespace Guncon3Console
             State.Buttons[(int)GunButton.RRight] = StickDigitizer.IsHigh(rx, _centres.RX);
             State.Buttons[(int)GunButton.RUp]    = StickDigitizer.IsLow(ry, _centres.RY);
             State.Buttons[(int)GunButton.RDown]  = StickDigitizer.IsHigh(ry, _centres.RY);
+
+            // The depth axis the same way, around a threshold the user set rather than a measured centre:
+            // where "near" ends depends on where the player stands, and nothing here can know that.
+            int z = State.Z;
+            int zThreshold = _zThreshold;
+            State.Buttons[(int)GunButton.ZLow]  = DepthDigitizer.IsLow(z, zThreshold);
+            State.Buttons[(int)GunButton.ZHigh] = DepthDigitizer.IsHigh(z, zThreshold);
 
             return ReadResult.Ok;
         }
