@@ -3,8 +3,10 @@
 > Use **GunCon 3** on Windows, with calibration built in.
 
 A fork ported to **.NET 10**: the input path reworked, one thread per gun, both sticks
-exposed digitally and as a virtual joystick, and a GUI with a tray icon. Install the
-two drivers, run the executable, and it calibrates itself on first launch.
+exposed digitally and as a virtual Xbox 360 controller, and a GUI with a tray icon.
+Windows 11 friendly: the cursor and keys go through `SendInput`, the controller through
+ViGEmBus. Install the gun's driver, run the executable, and it calibrates itself on
+first launch.
 
 ![GonCon3 GUI](image.png)
 
@@ -14,26 +16,55 @@ two drivers, run the executable, and it calibrates itself on first launch.
   state, a live log, a mapping editor and a live test view. Closing hides it to the tray.
 - Five-point calibration (four corners and the centre) 
   capture: the linear rectangle and a projective 
-- Both analog sticks digitalized and mappable, plus a virtual joystick with both sticks,
+- Both analog sticks digitalized and mappable, plus a virtual Xbox 360 controller with both
+  sticks, the depth axis on the left trigger and the nine buttons.
 - An unplugged gun is reported, releases its buttons and reconnects by itself.
 - Multiple guns, each on its own thread. Multi-monitor: the aim follows the monitor it was calibrated on.
+  Two guns share one cursor, so a mouse button or key mapped on both is released when either gun lets go.
 - Local configuration files, with mapping errors reported by line number.
 
-Three virtual devices, through the TetherScript drivers:
+Three virtual outputs:
 
-| device | carries |
+| output | how | carries |
+|---|---|---|
+| absolute mouse | `SendInput`, no driver | aiming over the virtual desktop, plus any button mapped to `MOUSE.*` |
+| keyboard | `SendInput`, no driver | any button mapped to `KEYBOARD.*`, as key-down / key-up by scan code |
+| Xbox 360 controller | ViGEmBus, one pad per gun | both sticks, depth on the left trigger, and the nine buttons — always, no mapping needed |
+
+One gun button can produce a keyboard key and a controller button at once. The controller
+layout is fixed:
+
+| gun | Xbox 360 |
 |---|---|
-| absolute mouse | aiming, plus any button mapped to `MOUSE.*` |
-| keyboard | any button mapped to `KEYBOARD.*` |
-| joystick | both sticks (`X`/`Y`, `rX`/`rY`), depth (`Z`) and buttons 0-8 (Trigger, A1, A2, B1, B2, C1, C2, AClick, BClick) — always, no mapping needed |
-
-One gun button can produce a keyboard key and a joystick button at once. The joystick assignment is fixed.
+| Trigger | A |
+| A1 | B |
+| A2 | X |
+| B1 | Y |
+| B2 | LB |
+| C1 | RB |
+| C2 | Start |
+| AClick | left stick click |
+| BClick | right stick click |
 
 ## Requirements
 
-Windows x64, the **GunCon 3 WinUSB driver** ([`drivers/`](drivers/)), and the **TetherScript HID Virtual Driver Kit**, installed as Administrator, then reboot. The framework-dependent build also needs the **.NET 10 *Desktop* Runtime**.
+Windows x64 and the **GunCon 3 WinUSB driver** ([`drivers/`](drivers/)), installed as
+Administrator. The framework-dependent build also needs the **.NET 10 *Desktop* Runtime**.
 
-> ⚠️ **TetherScript is a dead end, worth knowing before you invest in it.** This application's whole output path depends on them.
+Optional: **[ViGEmBus 1.22.0](https://github.com/nefarius/ViGEmBus/releases)** for the
+virtual Xbox 360 controller. Without it the mouse and keyboard still work; the Status tab
+shows the joystick as *failed* and the log says what to install. ViGEm is end-of-life
+(2023) but its last release is signed and installs on Windows 10 and 11.
+
+Two things `SendInput` cannot do:
+
+- Reach a window more elevated than this process. A game run as Administrator ignores the
+  gun unless the app runs as Administrator too. Windows may or may not report the drop:
+  when it does, the Status tab shows mouse and keyboard as *failed* with win32 error 5 in
+  the log; when it does not, everything looks fine and nothing moves. Either way,
+  elevation is the first thing to check.
+- Fool anti-cheat. Injected input is flagged as such, and a game that filters on the flag
+  will not see the gun. Emulators (MAME, RetroArch, Demul, TeknoParrot) do.
 
 ## Building
 
@@ -115,6 +146,9 @@ Gun commands are the nine buttons `Trigger`, `A1`, `A2`, `B1`, `B2`, `C1`, `C2`,
 `RUp` / `RDown` / `RLeft` / `RRight`. Keyboard codes come from `Guncon3Console.exe keys`,
 also in [docs/keycodes.txt](docs/keycodes.txt).
 
+Keys are sent by physical position (scan code), so on a non-US layout a label names the US
+key at that position: `a` fires the key that is `q` on AZERTY.
+
 The **Mapping** tab edits the same files: pick one, set a keyboard code and a mouse
 button per gun button, and **Save** writes it with its comment header kept and reloads
 every gun at once. A yellow banner reports lines it could not understand, dropped on
@@ -139,10 +173,12 @@ the first 60 frames after startup, so **do not hold a stick while it starts**; d
 
 - Recalibrate after changing monitor, resolution or arrangement. If the calibrated
   monitor is gone the app says so and aims screen-relative until you do.
-- The aim is offset onto the calibrated monitor because Windows treats an absolute HID
-  mouse as spanning the whole virtual desktop. On one monitor this changes nothing. It
-  is a compile-time constant (`GunWorker.MapToVirtualDesktop`), not a setting.
+- The aim is offset onto the calibrated monitor because `SendInput`'s absolute
+  coordinates span the whole virtual desktop. On one monitor this changes nothing.
 - An uncalibrated gun does not move the cursor at all; its buttons still work.
+- A key or mouse button the app holds when it is killed stays held until you press it
+  physically — `SendInput` has no timeout. A normal exit, the tray's Exit and logoff all
+  release everything first.
 - Licensed **GPL-2.0**, inherited from [sonik-br](https://github.com/sonik-br/GunconUSB).
 
 ---

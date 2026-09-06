@@ -11,7 +11,8 @@ namespace Guncon3.Core
         /// <summary>Centre assumed when nothing better is known.</summary>
         public const int DefaultCentre = 128;
 
-        /// <summary>Maximum value a TetherScript joystick axis accepts.</summary>
+        /// <summary>Maximum value of a virtual joystick axis before it is scaled for the output backend;
+        /// chosen so that it fits a signed 16-bit XInput thumb axis once doubled and centred.</summary>
         public const int AxisMax = 32767;
 
         private const int AxisMin = 0;

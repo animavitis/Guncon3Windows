@@ -38,10 +38,10 @@ namespace Guncon3Console
 
     /// <summary>
     /// What the absolute mouse holds after one frame, whether or not that frame was
-    /// actually sent: an unchanged report is still what the device is showing. X and Y
-    /// are 0..32767 over the virtual desktop; Buttons is bit 0 left, bit 1 right, bit 2
-    /// middle; HasPosition is false when the gun has no usable calibration, so the
-    /// cursor was left where it was.
+    /// actually sent: an unchanged state is still what the cursor shows. X and Y are
+    /// 0..65535 over the virtual desktop, SendInput's own range; Buttons is bit 0 left,
+    /// bit 1 right, bit 2 middle; HasPosition is false when the gun has no usable
+    /// calibration, so the cursor was left where it was.
     /// </summary>
     internal readonly record struct MouseOutput(ushort X, ushort Y, byte Buttons, bool HasPosition);
 

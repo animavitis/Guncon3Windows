@@ -14,8 +14,8 @@ namespace Guncon3Console.Ui
     /// <summary>
     /// The Test tab: what one gun is doing right now. Left, the aim as three crosshairs
     /// on a picture of the calibrated screen; middle, every button and both sticks;
-    /// right, what the three TetherScript feeders were last told. Passive by
-    /// construction — the panel holds no engine reference, only one
+    /// right, what the three virtual outputs — cursor, keys, pad — were last told.
+    /// Passive by construction — the panel holds no engine reference, only one
     /// <see cref="GunFrame"/> and one status list through two delegates the host
     /// supplies — and it asks for nothing while <see cref="SetActive"/> was last called with false.
     /// </summary>
@@ -72,7 +72,7 @@ namespace Guncon3Console.Ui
         private const int TileMarginPx = 2;
 
         /// <summary>The nine physical buttons the joystick feeder reports, in <see cref="GunButton"/> order —
-        /// exactly JoystickFeeder's own PhysicalButtons order.</summary>
+        /// exactly JoystickFeeder's own PhysicalButtons order, i.e. JoystickReportState's bit order.</summary>
         private const int JoystickButtonCount = 9;
 
         // ----------------------------------------------------------------- text
