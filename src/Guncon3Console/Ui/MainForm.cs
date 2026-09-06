@@ -193,11 +193,11 @@ namespace Guncon3Console.Ui
             _searchAgainItem = UiFactory.MenuItem("Search &again", SearchAgain);
 
             var fileMenu = new ToolStripMenuItem("&File");
-            fileMenu.DropDownItems.Add(_searchAgainItem);
             fileMenu.DropDownItems.Add(UiFactory.MenuItem("&Settings…", OpenSettings));
             fileMenu.DropDownItems.Add(new ToolStripSeparator());
             fileMenu.DropDownItems.Add(UiFactory.MenuItem("E&xit", RequestExit));
             var gunMenu = new ToolStripMenuItem("&Gun");
+            gunMenu.DropDownItems.Add(_searchAgainItem);
             gunMenu.DropDownItems.Add(_recalibrateItem);
             gunMenu.DropDownItems.Add(_reloadItem);
             gunMenu.DropDownItems.Add(_modeItem);
