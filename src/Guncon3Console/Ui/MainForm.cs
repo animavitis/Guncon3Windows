@@ -28,8 +28,18 @@ namespace Guncon3Console.Ui
         private const int LogDrainMs = 100;
         private const int StatusColumns = 8;
 
+        /// <summary>The note column never goes below this; everything narrower says nothing.</summary>
+        private const int NoteColumnMinPx = 120;
+
+        /// <summary>The timestamp in front of every log line, as the file sink writes it minus the date — the
+        /// window is only ever open for one session.</summary>
+        private const string LogTimeFormat = "HH:mm:ss.fff";
+
         private static readonly Color WarnColour = Color.FromArgb(150, 110, 0);
         private static readonly Color ErrorColour = Color.FromArgb(190, 30, 30);
+
+        /// <summary>The timestamp is there to be read when wanted, not to compete with the line itself.</summary>
+        private static readonly Color LogTimeColour = Color.FromArgb(140, 140, 148);
 
         private readonly App _app;
         private readonly UiSink _log;
@@ -44,7 +54,8 @@ namespace Guncon3Console.Ui
 
         private readonly ToolStripMenuItem _recalibrateItem;
         private readonly ToolStripMenuItem _reloadItem;
-        private readonly ToolStripMenuItem _modeItem;
+        private readonly ToolStripMenuItem _rectItem;
+        private readonly ToolStripMenuItem _homographyItem;
         private readonly ToolStripMenuItem _searchAgainItem;
         private readonly TabControl _tabs;
         private readonly TabPage _statusPage;
@@ -105,7 +116,11 @@ namespace Guncon3Console.Ui
             // current mode is not repeated here — the title bar and the status strip both carry it.
             _recalibrateItem = UiFactory.MenuItem("&Recalibrate (F12)", Recalibrate);
             _reloadItem = UiFactory.MenuItem("Re&load mappings (R)", ReloadMappings);
-            _modeItem = UiFactory.MenuItem("Toggle calibration &mode (H)", ToggleMode);
+
+            // The two modes as a checked pair rather than one "Toggle" item: an item that says only that it
+            // will switch never says what to. H still flips between them, and RefreshStatus moves the tick.
+            _rectItem = UiFactory.MenuItem("&Rect", () => SetMode(CalibrationMode.Rect));
+            _homographyItem = UiFactory.MenuItem("Rect + &homography (H)", () => SetMode(CalibrationMode.Homography));
 
             _statusList = new ListView
             {
@@ -117,14 +132,18 @@ namespace Guncon3Console.Ui
                 GridLines = true,
                 HeaderStyle = ColumnHeaderStyle.Nonclickable
             };
+            // These seven come to 620 px, so all eight columns fit the 880 px the window opens at. The note is
+            // sized from whatever is left over, on every resize, rather than being a fixed 240 that pushed the
+            // total past the window and left the list scrolled sideways from the first frame.
             _statusList.Columns.Add("#", 34);
-            _statusList.Columns.Add("Device", 250);
-            _statusList.Columns.Add("Connected", 80);
-            _statusList.Columns.Add("Calibration", 130);
-            _statusList.Columns.Add("Mouse", 70);
-            _statusList.Columns.Add("Keyboard", 80);
-            _statusList.Columns.Add("Joystick", 70);
-            _statusList.Columns.Add("Note", 240);
+            _statusList.Columns.Add("Device", 200);
+            _statusList.Columns.Add("Connected", 74);
+            _statusList.Columns.Add("Calibration", 118);
+            _statusList.Columns.Add("Mouse", 62);
+            _statusList.Columns.Add("Keyboard", 70);
+            _statusList.Columns.Add("Joystick", 62);
+            _statusList.Columns.Add("Note", NoteColumnMinPx);
+            _statusList.Resize += (_, __) => LayoutStatusColumns();
 
             _statusPage = new TabPage("Status");
             _statusPage.Controls.Add(_statusList);
@@ -145,13 +164,19 @@ namespace Guncon3Console.Ui
                 HideSelection = false
             };
 
-            var logTools = new ToolStrip { GripStyle = ToolStripGripStyle.Hidden };
-            logTools.Items.Add(UiFactory.Button("Clear", ClearLog));
-            logTools.Items.Add(UiFactory.Button("Copy all", CopyLog));
+            // Under the right button rather than on a strip of its own: two commands wanted a few times a
+            // session do not earn a permanent row above the log. Ctrl+A and Ctrl+C work in the box regardless.
+            var logMenu = new ContextMenuStrip();
+            var copySelection = UiFactory.MenuItem("&Copy selection", CopySelection);
+            logMenu.Items.Add(copySelection);
+            logMenu.Items.Add(UiFactory.MenuItem("Copy &all", CopyLog));
+            logMenu.Items.Add(new ToolStripSeparator());
+            logMenu.Items.Add(UiFactory.MenuItem("C&lear", ClearLog));
+            logMenu.Opening += (_, __) => copySelection.Enabled = _logBox.SelectionLength > 0;
+            _logBox.ContextMenuStrip = logMenu;
 
             _logPage = new TabPage("Log");
             _logPage.Controls.Add(_logBox);
-            _logPage.Controls.Add(logTools);
 
             _mapping = new MappingEditor(RunModal) { Dock = DockStyle.Fill };
             _mapping.Saved += ReloadMappings;
@@ -200,7 +225,9 @@ namespace Guncon3Console.Ui
             gunMenu.DropDownItems.Add(_searchAgainItem);
             gunMenu.DropDownItems.Add(_recalibrateItem);
             gunMenu.DropDownItems.Add(_reloadItem);
-            gunMenu.DropDownItems.Add(_modeItem);
+            gunMenu.DropDownItems.Add(new ToolStripSeparator());
+            gunMenu.DropDownItems.Add(_rectItem);
+            gunMenu.DropDownItems.Add(_homographyItem);
             var helpMenu = new ToolStripMenuItem("&Help");
             helpMenu.DropDownItems.Add(UiFactory.MenuItem("&About", ShowAbout));
             var menu = new MenuStrip();
@@ -259,7 +286,7 @@ namespace Guncon3Console.Ui
             RefreshDegraded();
         }
 
-        /// <summary>No gun is connected: the three engine actions are refused and the File menu offers Search
+        /// <summary>No gun is connected: the engine actions are refused and the Gun menu offers Search
         /// again.</summary>
         private bool Degraded => !_app.HasGuns;
 
@@ -269,8 +296,18 @@ namespace Guncon3Console.Ui
 
         private void ReloadMappings() => RunEngineAction(_app.ReloadMappings);
 
-        private void ToggleMode() => RunEngineAction(() => _app.SetMode(
-            _app.Mode == CalibrationMode.Rect ? CalibrationMode.Homography : CalibrationMode.Rect));
+        /// <summary>The H key and the tray's own item: whichever mode is not the current one.</summary>
+        private void ToggleMode() => SetMode(
+            _app.Mode == CalibrationMode.Rect ? CalibrationMode.Homography : CalibrationMode.Rect);
+
+        /// <summary>Picking the mode that is already set is not an engine call — it is a user clicking the item
+        /// that already has the tick.</summary>
+        private void SetMode(CalibrationMode mode)
+        {
+            if (_app.Mode == mode) return;
+
+            RunEngineAction(() => _app.SetMode(mode));
+        }
 
         /// <summary>The Search again button and its tray item. Goes through <see cref="Run"/> because <see
         /// cref="App.Rescan"/> mutates the slot list and can open a calibration window.</summary>
@@ -355,7 +392,8 @@ namespace Guncon3Console.Ui
         {
             _recalibrateItem.Enabled = enabled;
             _reloadItem.Enabled = enabled;
-            _modeItem.Enabled = enabled;
+            _rectItem.Enabled = enabled;
+            _homographyItem.Enabled = enabled;
             _tray.ActionsEnabled = enabled;
         }
 
@@ -426,6 +464,8 @@ namespace Guncon3Console.Ui
 
             Text = TitleText();
             _modeLabel.Text = ModeLabelText();
+            _rectItem.Checked = _app.Mode == CalibrationMode.Rect;
+            _homographyItem.Checked = _app.Mode == CalibrationMode.Homography;
             _tray.Tooltip = string.Create(CultureInfo.InvariantCulture, $"GUNCON3 — {connected} gun(s) connected");
 
             if (!Degraded)
@@ -440,9 +480,26 @@ namespace Guncon3Console.Ui
             _testOutput.SetGuns(statuses);
         }
 
+        /// <summary>Every column but the last keeps the width it was given; the note takes what the window has
+        /// left, down to <see cref="NoteColumnMinPx"/>. Below that the list scrolls sideways, which at a window
+        /// that narrow is the honest answer.</summary>
+        private void LayoutStatusColumns()
+        {
+            if (_statusList == null || _statusList.Columns.Count < StatusColumns) return;
+
+            int fixedWidth = 0;
+            for (int i = 0; i < StatusColumns - 1; i++)
+                fixedWidth += _statusList.Columns[i].Width;
+
+            _statusList.Columns[StatusColumns - 1].Width =
+                Math.Max(NoteColumnMinPx, _statusList.ClientSize.Width - fixedWidth);
+        }
+
         private static ListViewItem NewRow(GunStatus status)
         {
-            var row = new ListViewItem();
+            // Without this every cell in the row takes the row's own colour, and a failed feeder reads exactly
+            // like a working one.
+            var row = new ListViewItem { UseItemStyleForSubItems = false };
             for (int i = 1; i < StatusColumns; i++) row.SubItems.Add(string.Empty);
             FillRow(row, status);
             return row;
@@ -452,12 +509,22 @@ namespace Guncon3Console.Ui
         {
             row.SubItems[0].Text = (status.Index + 1).ToString(CultureInfo.InvariantCulture);
             row.SubItems[1].Text = DeviceTail(status.DevicePath);
-            row.SubItems[2].Text = status.IsConnected ? "yes" : "no";
-            row.SubItems[3].Text = CalibrationText(status);
-            row.SubItems[4].Text = status.MouseHealthy ? "OK" : "failed";
-            row.SubItems[5].Text = status.KeyboardHealthy ? "OK" : "failed";
-            row.SubItems[6].Text = status.JoystickHealthy ? "OK" : "failed";
-            row.SubItems[7].Text = status.PipeAbandoned ? "idle after read-thread timeout" : string.Empty;
+
+            Cell(row.SubItems[2], status.IsConnected ? "yes" : "no", status.IsConnected);
+            Cell(row.SubItems[3], CalibrationText(status), status.HasCalibration, warnOnly: true);
+            Cell(row.SubItems[4], status.MouseHealthy ? "OK" : "failed", status.MouseHealthy);
+            Cell(row.SubItems[5], status.KeyboardHealthy ? "OK" : "failed", status.KeyboardHealthy);
+            Cell(row.SubItems[6], status.JoystickHealthy ? "OK" : "failed", status.JoystickHealthy);
+            Cell(row.SubItems[7], status.PipeAbandoned ? "idle after read-thread timeout" : string.Empty,
+                 !status.PipeAbandoned, warnOnly: true);
+        }
+
+        /// <summary>One cell: its text, and its colour when the thing it reports is not well. A cell that is
+        /// merely worth noticing goes amber, one that means something stopped working goes red.</summary>
+        private static void Cell(ListViewItem.ListViewSubItem cell, string text, bool good, bool warnOnly = false)
+        {
+            cell.Text = text;
+            cell.ForeColor = good ? SystemColors.WindowText : warnOnly ? WarnColour : ErrorColour;
         }
 
         private static string CalibrationText(GunStatus status)
@@ -521,6 +588,16 @@ namespace Guncon3Console.Ui
 
             foreach (var entry in entries)
             {
+                // The file sink has always stamped its lines; the window threw the time away even though the
+                // entry carried it. A blank spacer line and a header get none — a time on them says nothing.
+                if (entry.Level != LogLevel.Header && entry.Text.Length > 0)
+                {
+                    _logBox.SelectionStart = _logBox.TextLength;
+                    _logBox.SelectionLength = 0;
+                    _logBox.SelectionColor = LogTimeColour;
+                    _logBox.AppendText(entry.Time.ToString(LogTimeFormat, CultureInfo.InvariantCulture) + "  ");
+                }
+
                 _logBox.SelectionStart = _logBox.TextLength;
                 _logBox.SelectionLength = 0;
                 _logBox.SelectionColor = ColourOf(entry.Level);
@@ -552,13 +629,25 @@ namespace Guncon3Console.Ui
 
         private void ClearLog() => _logBox.Clear();
 
+        private void CopySelection()
+        {
+            if (_logBox.SelectionLength == 0) return;
+
+            CopyToClipboard(_logBox.SelectedText);
+        }
+
         private void CopyLog()
         {
             if (_logBox.TextLength == 0) return;
 
+            CopyToClipboard(_logBox.Text);
+        }
+
+        private static void CopyToClipboard(string text)
+        {
             try
             {
-                Clipboard.SetText(_logBox.Text);
+                Clipboard.SetText(text);
             }
             catch (ExternalException ex)
             {

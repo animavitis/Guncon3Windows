@@ -95,10 +95,14 @@ exits with code 1; `keys` is never blocked.
 
 **F12** recalibrates every gun, **R** reloads the mapping files, **H** toggles the
 linear and projective mapping. The **Gun** menu, the tray menu and those keys do the same;
-the keys need the window focused. The mode is not remembered across runs.
+the keys need the window focused. The Gun menu also shows which of the two mappings is
+live and lets you pick either one directly. The mode is not remembered across runs.
 
-- **Status** — device, connection, which calibration, and whether each virtual device still accepts reports.
-- **Log** — everything the app says, warnings amber, errors red, with Clear and Copy all.
+- **Status** — device, connection, which calibration, and whether each virtual device
+  still accepts reports. A gun that is not connected, a missing calibration and a feeder
+  that stopped are coloured rather than merely spelled out.
+- **Log** — everything the app says, timestamped, warnings amber, errors red. Right-click
+  for Copy selection, Copy all and Clear.
 - **Test Input** — one gun live: both calibrated aims as crosshairs (grey raw, white
   linear, cyan projective, the live one thicker), every button and stick direction.
 - **Test Output** — what the three virtual devices were last told for that gun, each with
