@@ -14,11 +14,11 @@ namespace Guncon3Console.Ui
 {
     /// <summary>
     /// The one window. Owns the tray icon, shows every gun and the log, and turns
-    /// buttons, keys and tray items into <see cref="App"/> calls.
+    /// menu items, keys and tray items into <see cref="App"/> calls.
     ///
     /// Every engine call happens on this thread and only one at a time: the engine
     /// takes no locks and a calibration runs a modal dialog that keeps pumping
-    /// messages, so <see cref="Run"/> disables the toolbar and the tray menu for the
+    /// messages, so <see cref="Run"/> disables the Gun menu and the tray menu for the
     /// duration. The two things that arrive from elsewhere — App.StatusChanged and
     /// UiSink.Appended — are marshalled here.
     /// </summary>
@@ -42,9 +42,9 @@ namespace Guncon3Console.Ui
         /// <summary>What settings.txt currently says, as this session actually applied it.</summary>
         private Settings _settings;
 
-        private readonly ToolStripButton _recalibrateButton;
-        private readonly ToolStripButton _reloadButton;
-        private readonly ToolStripButton _modeButton;
+        private readonly ToolStripMenuItem _recalibrateItem;
+        private readonly ToolStripMenuItem _reloadItem;
+        private readonly ToolStripMenuItem _modeItem;
         private readonly ToolStripMenuItem _searchAgainItem;
         private readonly TabControl _tabs;
         private readonly TabPage _statusPage;
@@ -100,14 +100,12 @@ namespace Guncon3Console.Ui
             AutoScaleMode = AutoScaleMode.Dpi;
             KeyPreview = true;
 
-            _recalibrateButton = UiFactory.Button("Recalibrate (F12)", Recalibrate);
-            _reloadButton = UiFactory.Button("Reload mappings (R)", ReloadMappings);
-            _modeButton = UiFactory.Button(ModeButtonText(), ToggleMode);
-
-            var toolbar = new ToolStrip { GripStyle = ToolStripGripStyle.Hidden };
-            toolbar.Items.Add(_recalibrateButton);
-            toolbar.Items.Add(_reloadButton);
-            toolbar.Items.Add(_modeButton);
+            // In the menu bar rather than on a strip of their own: three text buttons are not worth a whole row
+            // of the window, and the keys beside their names are what most of this gets driven by anyway. The
+            // current mode is not repeated here — the title bar and the status strip both carry it.
+            _recalibrateItem = UiFactory.MenuItem("&Recalibrate (F12)", Recalibrate);
+            _reloadItem = UiFactory.MenuItem("Re&load mappings (R)", ReloadMappings);
+            _modeItem = UiFactory.MenuItem("Toggle calibration &mode (H)", ToggleMode);
 
             _statusList = new ListView
             {
@@ -199,10 +197,15 @@ namespace Guncon3Console.Ui
             fileMenu.DropDownItems.Add(UiFactory.MenuItem("&Settings…", OpenSettings));
             fileMenu.DropDownItems.Add(new ToolStripSeparator());
             fileMenu.DropDownItems.Add(UiFactory.MenuItem("E&xit", RequestExit));
+            var gunMenu = new ToolStripMenuItem("&Gun");
+            gunMenu.DropDownItems.Add(_recalibrateItem);
+            gunMenu.DropDownItems.Add(_reloadItem);
+            gunMenu.DropDownItems.Add(_modeItem);
             var helpMenu = new ToolStripMenuItem("&Help");
             helpMenu.DropDownItems.Add(UiFactory.MenuItem("&About", ShowAbout));
             var menu = new MenuStrip();
             menu.Items.Add(fileMenu);
+            menu.Items.Add(gunMenu);
             menu.Items.Add(helpMenu);
             MainMenuStrip = menu;
 
@@ -210,7 +213,6 @@ namespace Guncon3Console.Ui
             // and the menu last.
             Controls.Add(_tabs);
             Controls.Add(statusStrip);
-            Controls.Add(toolbar);
             Controls.Add(menu);
 
             _tray = new TrayIcon(AppIcon.Value);
@@ -351,9 +353,9 @@ namespace Guncon3Console.Ui
 
         private void SetActionsEnabled(bool enabled)
         {
-            _recalibrateButton.Enabled = enabled;
-            _reloadButton.Enabled = enabled;
-            _modeButton.Enabled = enabled;
+            _recalibrateItem.Enabled = enabled;
+            _reloadItem.Enabled = enabled;
+            _modeItem.Enabled = enabled;
             _tray.ActionsEnabled = enabled;
         }
 
@@ -424,7 +426,6 @@ namespace Guncon3Console.Ui
 
             Text = TitleText();
             _modeLabel.Text = ModeLabelText();
-            _modeButton.Text = ModeButtonText();
             _tray.Tooltip = string.Create(CultureInfo.InvariantCulture, $"GUNCON3 — {connected} gun(s) connected");
 
             if (!Degraded)
@@ -480,8 +481,6 @@ namespace Guncon3Console.Ui
             => string.Create(CultureInfo.InvariantCulture, $"GUNCON3 {AppInfo.Version} — mode: {_app.Mode}");
 
         private string ModeLabelText() => "Mode: " + _app.Mode;
-
-        private string ModeButtonText() => "Mode: " + _app.Mode + " (H)";
 
         /// <summary><see cref="App.StatusChanged"/> can arrive on a worker thread; the rows may only be touched
         /// here.</summary>

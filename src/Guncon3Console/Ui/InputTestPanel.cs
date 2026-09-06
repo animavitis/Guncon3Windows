@@ -19,14 +19,11 @@ namespace Guncon3Console.Ui
     {
         // ----------------------------------------------------------- aim picture
 
-        private const int AspectW = 4;
-        private const int AspectH = 3;
         private const float OffScreenBorderWidth = 3f;
         private const int CrosshairArmPx = 8;
         private const int ActiveCrosshairArmPx = 13;
         private const float CrosshairWidth = 1f;
         private const float ActiveCrosshairWidth = 2.5f;
-        private const int BoxTextPadPx = 6;
         private const int AimTextLines = 4;
 
         // -------------------------------------------------------------- sticks
@@ -36,8 +33,9 @@ namespace Guncon3Console.Ui
 
         // ---------------------------------------------------------------- tiles
 
-        private const int TileColumns = 6;
-        private const int TileRows = 3;
+        // Five columns, not six: at the window's minimum width six of them are too narrow for "Trigger".
+        private const int TileColumns = 5;
+        private const int TileRows = 4;
 
         // ----------------------------------------------------------------- text
 
@@ -50,7 +48,6 @@ namespace Guncon3Console.Ui
 
         // -------------------------------------------------------------- colours
 
-        private static readonly Color AimBackColour = Color.FromArgb(24, 24, 28);
         private static readonly Color BorderColour = Color.FromArgb(120, 120, 130);
         private static readonly Color OffScreenColour = Color.FromArgb(205, 45, 45);
         private static readonly Color RawColour = Color.FromArgb(130, 130, 130);
@@ -76,7 +73,6 @@ namespace Guncon3Console.Ui
         private readonly Pen _homographyActivePen = new Pen(HomographyColour, ActiveCrosshairWidth);
         private readonly Pen _dimPen = new Pen(DimColour, CrosshairWidth);
         private readonly Pen _dimActivePen = new Pen(DimColour, ActiveCrosshairWidth);
-        private readonly SolidBrush _aimBackBrush = new SolidBrush(AimBackColour);
 
         internal InputTestPanel(Func<int, GunFrame> frameSource, Func<IReadOnlyList<GunStatus>> statusSource)
             : base(frameSource, statusSource)
@@ -153,7 +149,7 @@ namespace Guncon3Console.Ui
 
         private static string AimText(GunFrame frame)
         {
-            if (frame == null) return NoFrames;
+            if (frame == null) return string.Empty;
 
             bool homographyActive = frame.Mode == CalibrationMode.Homography && frame.Homography != null;
 
@@ -197,7 +193,7 @@ namespace Guncon3Console.Ui
             var box = BoxIn(_aim.ClientRectangle);
             if (box.Width <= 0 || box.Height <= 0) return;
 
-            g.FillRectangle(_aimBackBrush, box);
+            g.FillRectangle(ScreenBackBrush, box);
 
             var frame = Frame;
             bool offScreen = frame != null && !frame.InsideScreen;
@@ -205,7 +201,8 @@ namespace Guncon3Console.Ui
 
             if (frame == null)
             {
-                g.DrawString(NoFrames, Small, Brushes.Silver, box.X + BoxTextPadPx, box.Y + BoxTextPadPx);
+                // This tab's one empty-state message. The numbers under the box stay blank rather than repeat it.
+                CentreText(g, box, NoFrames, Brushes.Silver);
                 return;
             }
 
@@ -240,20 +237,6 @@ namespace Guncon3Console.Ui
             if (!Connected)
                 g.DrawString(DisconnectedText, Small, Brushes.OrangeRed,
                     box.X + BoxTextPadPx, box.Bottom - BoxTextPadPx - Small.Height);
-        }
-
-        /// <summary>The largest 4:3 box that fits, centred: the picture is the calibrated screen, not the
-        /// panel.</summary>
-        private static Rectangle BoxIn(Rectangle client)
-        {
-            int w = client.Width - 2 * BoxMarginPx;
-            int h = client.Height - 2 * BoxMarginPx;
-            if (w <= 0 || h <= 0) return Rectangle.Empty;
-
-            if (w * AspectH > h * AspectW) w = h * AspectW / AspectH;
-            else h = w * AspectH / AspectW;
-
-            return new Rectangle(client.X + (client.Width - w) / 2, client.Y + (client.Height - h) / 2, w, h);
         }
 
         private static void Crosshair(Graphics g, Rectangle box, (double X, double Y)? point, Pen pen, int arm)
@@ -308,7 +291,6 @@ namespace Guncon3Console.Ui
             _homographyActivePen.Dispose();
             _dimPen.Dispose();
             _dimActivePen.Dispose();
-            _aimBackBrush.Dispose();
 
             base.DisposeResources();
         }

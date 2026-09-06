@@ -2,6 +2,7 @@
 using System;
 using System.Collections.Generic;
 using System.Drawing;
+using System.Drawing.Drawing2D;
 using System.Globalization;
 using System.Windows.Forms;
 using Guncon3.Core;
@@ -20,17 +21,21 @@ namespace Guncon3Console.Ui
         /// exactly JoystickFeeder's own PhysicalButtons order, i.e. JoystickReportState's bit order.</summary>
         private const int JoystickButtonCount = 9;
 
-        /// <summary>The tile grid is the same six columns as the input tab's, so a button sits at the same
+        /// <summary>The tile grid is the same five columns as the input tab's, so a button sits at the same
         /// width on both; nine buttons need two rows of it.</summary>
-        private const int TileColumns = 6;
+        private const int TileColumns = 5;
         private const int TileRows = 2;
 
         /// <summary>Bit 8 and up live in <see cref="JoystickReportState.Buttons1"/>.</summary>
         private const int ButtonsPerByte = 8;
 
-        /// <summary>The cursor's group is a fixed height: one line of numbers, one row of half-width tiles, and
-        /// the group's own caption and border. The key list below it takes everything else.</summary>
-        private const int MouseGroupHeightPx = 96;
+        /// <summary>SendInput's own range for an absolute move, over the whole virtual desktop.</summary>
+        private const int MouseAxisMax = 65535;
+
+        /// <summary>The cursor picture takes most of the left column; six keys need far less room than a
+        /// picture does.</summary>
+        private const float MouseGroupPercent = 62f;
+        private const float KeyboardGroupPercent = 38f;
 
         // ----------------------------------------------------------------- text
 
@@ -39,6 +44,7 @@ namespace Guncon3Console.Ui
         private const string HealthyText = "OK";
         private const string FailedText = "failed";
         private const string NoKeys = "none";
+        private const string NotMoved = "cursor left where it was";
         private const string MouseGroupName = "Mouse";
         private const string KeyboardGroupName = "Keyboard";
         private const string JoystickGroupName = "Joystick";
@@ -56,11 +62,12 @@ namespace Guncon3Console.Ui
         private readonly GroupBox _keyboardGroup;
         private readonly Label _keyboardKeys;
         private readonly GroupBox _joystickGroup;
+        private readonly DrawPanel _cursor;
         private readonly DrawPanel _joySticks;
         private readonly Label[] _joyTiles = new Label[JoystickButtonCount];
 
-        /// <summary>Says "stale" or "disconnected" when the numbers above are not being refreshed. The aim
-        /// picture carries the same warning on the input tab; this tab needs its own.</summary>
+        /// <summary>Says "stale" or "disconnected" when the numbers above are not being refreshed. The input
+        /// tab writes the same warning into its aim picture; this tab needs its own place for it.</summary>
         private readonly Label _state;
 
         internal OutputTestPanel(Func<int, GunFrame> frameSource, Func<IReadOnlyList<GunStatus>> statusSource)
@@ -76,7 +83,13 @@ namespace Guncon3Console.Ui
                 mouseTiles.Controls.Add(_mouseTiles[i]);
             }
 
+            // The same dark 4:3 picture the input tab draws the aim on, in the same corner of the tab — here it
+            // is the virtual desktop, and the dot is where the cursor was actually put.
+            _cursor = new DrawPanel { Dock = DockStyle.Fill, BackColor = SystemColors.Control };
+            _cursor.Paint += (_, e) => SafePaint(e.Graphics, PaintCursor, "cursor picture");
+
             _mouseGroup = new GroupBox { Dock = DockStyle.Fill, Text = MouseGroupName };
+            _mouseGroup.Controls.Add(_cursor);
             _mouseGroup.Controls.Add(mouseTiles);
             _mouseGroup.Controls.Add(_mouseValues);
 
@@ -84,12 +97,10 @@ namespace Guncon3Console.Ui
             _keyboardGroup = new GroupBox { Dock = DockStyle.Fill, Text = KeyboardGroupName };
             _keyboardGroup.Controls.Add(_keyboardKeys);
 
-            // The cursor's four numbers and three tiles are a fixed height; the key list grows to six lines, so
-            // it takes what is left.
             var left = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 2 };
             left.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100f));
-            left.RowStyles.Add(new RowStyle(SizeType.Absolute, MouseGroupHeightPx));
-            left.RowStyles.Add(new RowStyle(SizeType.Percent, 100f));
+            left.RowStyles.Add(new RowStyle(SizeType.Percent, MouseGroupPercent));
+            left.RowStyles.Add(new RowStyle(SizeType.Percent, KeyboardGroupPercent));
             left.Controls.Add(_mouseGroup, 0, 0);
             left.Controls.Add(_keyboardGroup, 0, 1);
 
@@ -155,8 +166,9 @@ namespace Guncon3Console.Ui
             SetGroupHealth(_keyboardGroup, KeyboardGroupName, frame?.KeyboardHealthy);
             SetGroupHealth(_joystickGroup, JoystickGroupName, frame?.JoystickHealthy);
 
+            // Blank with no frame: the cursor picture says it once for the whole tab.
             _mouseValues.Text = frame == null
-                ? NoFrames
+                ? string.Empty
                 : string.Create(CultureInfo.InvariantCulture,
                     $"X {frame.Mouse.X,5}  Y {frame.Mouse.Y,5}  position {(frame.Mouse.HasPosition ? "yes" : "no")}");
 
@@ -189,6 +201,7 @@ namespace Guncon3Console.Ui
                 _state.ForeColor = SystemColors.ControlText;
             }
 
+            _cursor.Invalidate();
             _joySticks.Invalidate();
         }
 
@@ -207,7 +220,7 @@ namespace Guncon3Console.Ui
 
         private static string KeyText(GunFrame frame)
         {
-            if (frame == null) return NoFrames;
+            if (frame == null) return string.Empty;
 
             var keys = frame.Keyboard.Keys;
             if (keys == null || keys.Length == 0) return NoKeys;
@@ -221,6 +234,35 @@ namespace Guncon3Console.Ui
         }
 
         // ----------------------------------------------------------------- painting
+
+        /// <summary>Where the cursor was put on the virtual desktop, or why it was not. The dot is the same one
+        /// the sticks use, on the same dark 4:3 ground as the input tab's aim.</summary>
+        private void PaintCursor(Graphics g)
+        {
+            g.SmoothingMode = SmoothingMode.AntiAlias;
+
+            var box = BoxIn(_cursor.ClientRectangle);
+            if (box.Width <= 0 || box.Height <= 0) return;
+
+            g.FillRectangle(ScreenBackBrush, box);
+            g.DrawRectangle(PadBorderPen, box);
+
+            var frame = Frame;
+            if (frame == null)
+            {
+                // This tab's one empty-state message; every label above stays blank rather than repeat it.
+                CentreText(g, box, NoFrames, Brushes.Silver);
+                return;
+            }
+
+            if (!frame.Mouse.HasPosition)
+            {
+                CentreText(g, box, NotMoved, Brushes.Gold);
+                return;
+            }
+
+            Point(g, box, frame.Mouse.X / (double)MouseAxisMax, frame.Mouse.Y / (double)MouseAxisMax);
+        }
 
         /// <summary>The pad's two sticks and its depth axis, drawn as the gun's own are. No arrows: the report
         /// carries axes, not directions — what digitising there was happened before it.</summary>

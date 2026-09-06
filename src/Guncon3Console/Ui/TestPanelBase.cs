@@ -42,10 +42,19 @@ namespace Guncon3Console.Ui
 
         protected const int BoxMarginPx = 8;
         protected const float BorderWidth = 1f;
+        protected const int BoxTextPadPx = 6;
+
+        /// <summary>Both tabs draw one dark picture in the same place: the calibrated screen on the input side,
+        /// the virtual desktop on the output one. Both are 4:3.</summary>
+        protected const int AspectW = 4;
+        protected const int AspectH = 3;
 
         // ---------------------------------------------------------------- sticks
 
-        private const int PadSizePx = 116;
+        /// <summary>A pad takes half the panel it is drawn on, but never shrinks past this: below it the point
+        /// and the arrow stop saying anything.</summary>
+        private const int MinPadSizePx = 70;
+
         private const int PadGapPx = 14;
         private const int PadTopPx = 16;
         private const int PointRadiusPx = 4;
@@ -83,6 +92,7 @@ namespace Guncon3Console.Ui
         private static readonly Color BarFillColour = Color.FromArgb(90, 140, 200);
         private static readonly Color PadBorderColour = Color.FromArgb(150, 150, 158);
         private static readonly Color PointColour = Color.White;
+        private static readonly Color ScreenBackColour = Color.FromArgb(24, 24, 28);
 
         // ------------------------------------------------------------- controls
 
@@ -98,6 +108,9 @@ namespace Guncon3Console.Ui
         private readonly SolidBrush _barFillBrush = new SolidBrush(BarFillColour);
         private readonly Pen _arrowPen = new Pen(BarFillColour, ArrowWidth) { EndCap = LineCap.ArrowAnchor };
         private readonly SolidBrush _pointBrush = new SolidBrush(PointColour);
+
+        /// <summary>The ground of the 4:3 picture — the aim box on one tab, the cursor box on the other.</summary>
+        protected readonly SolidBrush ScreenBackBrush = new SolidBrush(ScreenBackColour);
         protected readonly Font Mono = new Font(FontFamily.GenericMonospace, 9f);
         protected readonly Font Small = new Font(FontFamily.GenericSansSerif, 8f);
 
@@ -305,8 +318,14 @@ namespace Guncon3Console.Ui
         {
             g.SmoothingMode = SmoothingMode.AntiAlias;
 
-            var leftBox = new Rectangle(BoxMarginPx, PadTopPx, PadSizePx, PadSizePx);
-            var rightBox = new Rectangle(leftBox.Right + PadGapPx, PadTopPx, PadSizePx, PadSizePx);
+            // Square, half the width each, but never so tall that the depth bar falls off the bottom.
+            int size = (host.ClientSize.Width - 2 * BoxMarginPx - PadGapPx) / 2;
+            int room = host.ClientSize.Height - PadTopPx - PadGapPx - BarHeightPx - BarGapPx;
+            if (size > room) size = room;
+            if (size < MinPadSizePx) size = MinPadSizePx;
+
+            var leftBox = new Rectangle(BoxMarginPx, PadTopPx, size, size);
+            var rightBox = new Rectangle(leftBox.Right + PadGapPx, PadTopPx, size, size);
 
             Pad(g, leftBox, left);
             Pad(g, rightBox, right);
@@ -333,10 +352,7 @@ namespace Guncon3Console.Ui
 
             if (stick.X == null || stick.Y == null) return;
 
-            float px = box.X + (float)(Clamp01(stick.X.Value) * box.Width);
-            float py = box.Y + (float)(Clamp01(stick.Y.Value) * box.Height);
-            g.FillEllipse(_pointBrush, px - PointRadiusPx, py - PointRadiusPx, PointRadiusPx * 2, PointRadiusPx * 2);
-            g.DrawEllipse(PadBorderPen, px - PointRadiusPx, py - PointRadiusPx, PointRadiusPx * 2, PointRadiusPx * 2);
+            Point(g, box, stick.X.Value, stick.Y.Value);
 
             if (stick.Values != null)
             {
@@ -375,6 +391,38 @@ namespace Guncon3Console.Ui
 
         protected static double Clamp01(double v) => v < 0 ? 0 : v > 1 ? 1 : v;
 
+        /// <summary>The largest 4:3 box that fits, centred: the picture is a screen, not the panel.</summary>
+        protected static Rectangle BoxIn(Rectangle client)
+        {
+            int w = client.Width - 2 * BoxMarginPx;
+            int h = client.Height - 2 * BoxMarginPx;
+            if (w <= 0 || h <= 0) return Rectangle.Empty;
+
+            if (w * AspectH > h * AspectW) w = h * AspectW / AspectH;
+            else h = w * AspectH / AspectW;
+
+            return new Rectangle(client.X + (client.Width - w) / 2, client.Y + (client.Height - h) / 2, w, h);
+        }
+
+        /// <summary>One line in the middle of a box: what a picture says when it has nothing to draw. Each tab
+        /// says it once, in its own picture, rather than in every label at once.</summary>
+        protected void CentreText(Graphics g, Rectangle box, string text, Brush brush)
+        {
+            var size = g.MeasureString(text, Small);
+            g.DrawString(text, Small, brush,
+                box.X + (box.Width - size.Width) / 2f, box.Y + (box.Height - size.Height) / 2f);
+        }
+
+        /// <summary>The white dot both pictures use for a point on 0..1 in each axis.</summary>
+        protected void Point(Graphics g, Rectangle box, double x, double y)
+        {
+            float px = box.X + (float)(Clamp01(x) * box.Width);
+            float py = box.Y + (float)(Clamp01(y) * box.Height);
+
+            g.FillEllipse(_pointBrush, px - PointRadiusPx, py - PointRadiusPx, PointRadiusPx * 2, PointRadiusPx * 2);
+            g.DrawEllipse(PadBorderPen, px - PointRadiusPx, py - PointRadiusPx, PointRadiusPx * 2, PointRadiusPx * 2);
+        }
+
         // -------------------------------------------------------------------- pieces
 
         protected static Color Lit(bool on) => on ? TileLitColour : TileIdleColour;
@@ -383,6 +431,9 @@ namespace Guncon3Console.Ui
         {
             Text = text,
             AutoSize = false,
+            // Without this a tile too narrow for its caption cuts it mid-word — "Trigg", "AClic" — with nothing
+            // to say it did.
+            AutoEllipsis = true,
             Width = TileWidthPx,
             Height = TileHeightPx,
             TextAlign = ContentAlignment.MiddleCenter,
@@ -424,6 +475,7 @@ namespace Guncon3Console.Ui
             _barFillBrush.Dispose();
             _arrowPen.Dispose();
             _pointBrush.Dispose();
+            ScreenBackBrush.Dispose();
             Mono.Dispose();
             Small.Dispose();
         }

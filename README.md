@@ -94,7 +94,7 @@ exits with code 1; `keys` is never blocked.
 ### The window
 
 **F12** recalibrates every gun, **R** reloads the mapping files, **H** toggles the
-linear and projective mapping. The toolbar, the tray menu and those keys do the same;
+linear and projective mapping. The **Gun** menu, the tray menu and those keys do the same;
 the keys need the window focused. The mode is not remembered across runs.
 
 - **Status** — device, connection, which calibration, and whether each virtual device still accepts reports.
@@ -102,8 +102,9 @@ the keys need the window focused. The mode is not remembered across runs.
 - **Test Input** — one gun live: both calibrated aims as crosshairs (grey raw, white
   linear, cyan projective, the live one thicker), every button and stick direction.
 - **Test Output** — what the three virtual devices were last told for that gun, each with
-  its feeder's health. Both Test tabs only watch, refresh about thirty times a second
-  while open, and stop when you leave them.
+  its feeder's health: where the cursor was put on the desktop, which keys are held, and
+  the pad's own sticks, depth and buttons drawn as the gun's are. Both Test tabs only
+  watch, refresh about thirty times a second while open, and stop when you leave them.
 - **Mapping** — edits `mapping*.txt`; see below.
 - **ESC** or the close button hides to the tray; double-clicking the icon brings it back.
   **File → Exit** or the tray's **Exit** releases every held button and ends the process,
