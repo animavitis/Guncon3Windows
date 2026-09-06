@@ -52,8 +52,10 @@ namespace Guncon3Console.Ui
         private readonly ListView _statusList;
         private readonly RichTextBox _logBox;
         private readonly MappingEditor _mapping;
-        private readonly TestPanel _test;
-        private readonly TabPage _testPage;
+        private readonly InputTestPanel _testInput;
+        private readonly OutputTestPanel _testOutput;
+        private readonly TabPage _testInputPage;
+        private readonly TabPage _testOutputPage;
         private readonly ToolStripStatusLabel _modeLabel;
         private readonly ToolStripStatusLabel _gunsLabel;
         private readonly WinFormsTimer _statusTimer;
@@ -161,16 +163,21 @@ namespace Guncon3Console.Ui
 
             // The panel is given two read-only delegates rather than the engine, so it cannot reach anything
             // that would need the busy guard.
-            _test = new TestPanel(_app.LatestFrame, _app.Status) { Dock = DockStyle.Fill };
+            _testInput = new InputTestPanel(_app.LatestFrame, _app.Status) { Dock = DockStyle.Fill };
+            _testOutput = new OutputTestPanel(_app.LatestFrame, _app.Status) { Dock = DockStyle.Fill };
 
-            _testPage = new TabPage("Test");
-            _testPage.Controls.Add(_test);
+            _testInputPage = new TabPage("Test Input");
+            _testInputPage.Controls.Add(_testInput);
+
+            _testOutputPage = new TabPage("Test Output");
+            _testOutputPage.Controls.Add(_testOutput);
 
             _tabs = new TabControl { Dock = DockStyle.Fill };
             _tabs.TabPages.Add(_statusPage);
             _tabs.TabPages.Add(_logPage);
             _tabs.TabPages.Add(mappingPage);
-            _tabs.TabPages.Add(_testPage);
+            _tabs.TabPages.Add(_testInputPage);
+            _tabs.TabPages.Add(_testOutputPage);
             _tabs.SelectedIndexChanged += (_, __) => UpdateWatch();
 
             _modeLabel = new ToolStripStatusLabel(ModeLabelText());
@@ -428,7 +435,8 @@ namespace Guncon3Console.Ui
 
             // Fixed after Start in practice; both ignore a call that changes nothing.
             _mapping.SetFiles(statuses);
-            _test.SetGuns(statuses);
+            _testInput.SetGuns(statuses);
+            _testOutput.SetGuns(statuses);
         }
 
         private static ListViewItem NewRow(GunStatus status)
@@ -604,10 +612,11 @@ namespace Guncon3Console.Ui
         }
 
         /// <summary>
-        /// The Test tab is the only thing in the window that costs the workers anything,
-        /// so it runs exactly while it is the selected tab on a visible window. Both
-        /// halves are flipped together: the engine stops building frames and the panel
-        /// stops asking for them. Called from the tab selection changing and from
+        /// The two Test tabs are the only thing in the window that costs the workers
+        /// anything, so frames are built exactly while one of them is the selected tab on
+        /// a visible window, and only that one ticks. Both halves are flipped together:
+        /// the engine stops building frames and the panels stop asking for them. Called
+        /// from the tab selection changing and from
         /// <see cref="OnResize"/> — hiding to the tray is covered too, since
         /// <see cref="Hide"/> raises <see cref="OnVisibleChanged"/>. Idempotent, so
         /// calling it from several places costs nothing.
@@ -615,26 +624,30 @@ namespace Guncon3Console.Ui
         private void UpdateWatch()
         {
             // OnResize fires from the constructor's ClientSize assignment before the tabs exist.
-            if (_tabs == null || _test == null) return;
+            if (_tabs == null || _testInput == null || _testOutput == null) return;
 
             // Visible stays true while minimised, so WindowState is checked too.
-            bool on = !_shutDown && Visible && WindowState != FormWindowState.Minimized && _tabs.SelectedTab == _testPage;
-            if (on == _watching) return;
+            var tab = _tabs.SelectedTab;
+            bool input = tab == _testInputPage;
+            bool output = tab == _testOutputPage;
+            bool on = !_shutDown && Visible && WindowState != FormWindowState.Minimized && (input || output);
 
-            _watching = on;
+            // WatchFrames and LatestFrame change no engine state, so this needs no busy guard and is safe
+            // while a calibration dialog is up. Moving between the two Test tabs leaves it alone: the engine
+            // is already publishing.
+            bool changed = on != _watching;
+            if (changed)
+            {
+                _watching = on;
+                if (on) _app.WatchFrames(true);
+            }
 
-            if (on)
-            {
-                // WatchFrames and LatestFrame change no engine state, so this needs no busy guard and is safe
-                // while a calibration dialog is up.
-                _app.WatchFrames(true);
-                _test.SetActive(true);
-            }
-            else
-            {
-                _test.SetActive(false);
-                _app.WatchFrames(false);
-            }
+            // Only the selected panel ticks, and both are told either way: the one being left has to stop.
+            // Both calls ignore an argument that changes nothing.
+            _testInput.SetActive(on && input);
+            _testOutput.SetActive(on && output);
+
+            if (changed && !on) _app.WatchFrames(false);
         }
 
         protected override void OnVisibleChanged(EventArgs e)
@@ -795,7 +808,8 @@ namespace Guncon3Console.Ui
 
             _statusTimer.Stop();
             _logTimer.Stop();
-            _test.SetActive(false);
+            _testInput.SetActive(false);
+            _testOutput.SetActive(false);
             _watching = false;
             _app.WatchFrames(false);
             _app.StatusChanged -= OnStatusChanged;

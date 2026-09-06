@@ -99,10 +99,11 @@ the keys need the window focused. The mode is not remembered across runs.
 
 - **Status** — device, connection, which calibration, and whether each virtual device still accepts reports.
 - **Log** — everything the app says, warnings amber, errors red, with Clear and Copy all.
-- **Test** — one gun live: both calibrated aims as crosshairs (grey raw, white linear,
-  cyan projective, the live one thicker), every button and stick direction, and what the
-  three virtual devices were last told. It only watches, refreshes about thirty times a
-  second while open, and stops when you leave the tab.
+- **Test Input** — one gun live: both calibrated aims as crosshairs (grey raw, white
+  linear, cyan projective, the live one thicker), every button and stick direction.
+- **Test Output** — what the three virtual devices were last told for that gun, each with
+  its feeder's health. Both Test tabs only watch, refresh about thirty times a second
+  while open, and stop when you leave them.
 - **Mapping** — edits `mapping*.txt`; see below.
 - **ESC** or the close button hides to the tray; double-clicking the icon brings it back.
   **File → Exit** or the tray's **Exit** releases every held button and ends the process,
