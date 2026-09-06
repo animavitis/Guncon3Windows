@@ -5,6 +5,7 @@ using System.IO;
 using System.Linq;
 using System.Windows.Forms;
 using Guncon3.Core;
+using Guncon3Console.Output;
 using Nefarius.Drivers.WinUSB;
 
 namespace Guncon3Console
@@ -145,9 +146,9 @@ namespace Guncon3Console
             foreach (var slot in _slots)
             {
                 var gun = slot.Gun;
-                ConnectFeeder(slot, "Mouse", gun.MouseFeeder.Connect);
-                ConnectFeeder(slot, "Keyboard", gun.KbFeeder.Connect);
-                ConnectFeeder(slot, "Joystick", gun.JoyFeeder.Connect);
+                ConnectFeeder(slot, "Mouse", "SendInput", gun.MouseFeeder.Connect);
+                ConnectFeeder(slot, "Keyboard", "SendInput", gun.KbFeeder.Connect);
+                ConnectFeeder(slot, "Joystick", "ViGEmBus, Xbox 360", gun.JoyFeeder.Connect);
 
                 // A feeder that stops accepting reports, or recovers, is a status
                 // change a host may want to show. Wired after Connect so a connect
@@ -206,17 +207,16 @@ namespace Guncon3Console
             }
         }
 
-        private static void ConnectFeeder(GunSlot slot, string name, Action connect)
+        private static void ConnectFeeder(GunSlot slot, string name, string backend, Action connect)
         {
             try
             {
-                Log.Line($"[Gun {slot.Index + 1}] {name} Connecting...");
                 connect();
-                Log.Line($"[Gun {slot.Index + 1}] {name} Connected (TetherScript).");
+                Log.Line($"[Gun {slot.Index + 1}] {name} ready ({backend}).");
             }
             catch (Exception ex)
             {
-                Log.Line($"[Gun {slot.Index + 1} {name}Feeder] Connect fail: {ex.Message}");
+                Log.Warn($"[Gun {slot.Index + 1}] {name} unavailable: {ex.Message}");
             }
         }
 
@@ -233,6 +233,8 @@ namespace Guncon3Console
 
             foreach (var slot in _slots) slot.Worker?.RequestStop();
 
+            bool anyWedged = false;
+
             foreach (var slot in _slots)
             {
                 var gun = slot.Gun;
@@ -242,11 +244,17 @@ namespace Guncon3Console
                     // A blocking WinUSB read has no transfer timeout, so a wedged device
                     // can leave its thread inside Read() indefinitely. Disposing the
                     // device underneath it would be an access violation; leaking the
-                    // handle until process exit is harmless by comparison. The feeder
-                    // disconnects are skipped too: FeederBase.ReportBuffer would race a
-                    // worker still inside Feed, so a wedged gun's held virtual buttons
-                    // rely on the TetherScript driver's own release.
+                    // handle until process exit is harmless by comparison. The mouse and
+                    // the keyboard are still released: Windows keeps an injected key or
+                    // button down until it is pressed for real, nothing else would let go,
+                    // and a thread stuck in the USB read is not inside a feed — the
+                    // SendInput feeders keep separate buffers for exactly this call. The
+                    // pad is left alone: the ViGEm target is not thread-safe, and the bus
+                    // removes it when this process exits.
                     Log.Warn($"[Gun {gun.Index + 1}] thread did not stop in time; leaving its device open.");
+                    try { gun.MouseFeeder.Disconnect(); } catch (Exception ex) { Log.Warn($"[Gun {gun.Index + 1}] mouse disconnect: {ex.Message}"); }
+                    try { gun.KbFeeder.Disconnect(); } catch (Exception ex) { Log.Warn($"[Gun {gun.Index + 1}] keyboard disconnect: {ex.Message}"); }
+                    anyWedged = true;
                     continue;
                 }
 
@@ -254,8 +262,12 @@ namespace Guncon3Console
                 {
                     // A calibration read thread that did not stop may still be inside
                     // Reader.Read(); Disconnect() disposes the USBDevice, which would be
-                    // a native use-after-free under that thread.
+                    // a native use-after-free under that thread. The feeders are safe to
+                    // close: the worker has joined, so nothing else touches them.
                     Log.Warn($"[Gun {gun.Index + 1}] left idle after an abandoned calibration read thread; leaving its device open.");
+                    try { gun.MouseFeeder.Disconnect(); } catch (Exception ex) { Log.Warn($"[Gun {gun.Index + 1}] mouse disconnect: {ex.Message}"); }
+                    try { gun.KbFeeder.Disconnect(); } catch (Exception ex) { Log.Warn($"[Gun {gun.Index + 1}] keyboard disconnect: {ex.Message}"); }
+                    try { gun.JoyFeeder.Disconnect(); } catch (Exception ex) { Log.Warn($"[Gun {gun.Index + 1}] joystick disconnect: {ex.Message}"); }
                     slot.Worker?.Dispose();
                     continue;
                 }
@@ -267,6 +279,11 @@ namespace Guncon3Console
 
                 slot.Worker?.Dispose();
             }
+
+            // After every pad has been unplugged. Harmless when no joystick ever connected. Skipped when a
+            // worker is still alive: freeing the client underneath it would be a native use-after-free, and
+            // process exit tears the bus down anyway.
+            if (!anyWedged) XboxBus.Close();
         }
 
         // --------------------------------------------------------------- status

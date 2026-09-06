@@ -33,6 +33,11 @@
          device-notification listener this app never used and replaces the hand-written
          P/Invoke with source generators. -->
     <PackageReference Include="Nefarius.Drivers.WinUSB" Version="5.3.0" />
+    <!-- The .NET client for the ViGEmBus driver, which hosts the virtual Xbox 360
+         controller. netstandard2.0, MIT, native ViGEmClient.dll embedded (Costura), so
+         the single-file publish needs nothing extra. ViGEm is end-of-life since 2023;
+         1.21.256 is its final release and pairs with ViGEmBus 1.22.0. -->
+    <PackageReference Include="Nefarius.ViGEm.Client" Version="1.21.256" />
   </ItemGroup>
 
   <!-- Release build (self-contained, one exe):

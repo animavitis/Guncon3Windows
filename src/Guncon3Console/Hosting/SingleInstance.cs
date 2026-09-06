@@ -7,14 +7,13 @@ namespace Guncon3Console.Hosting
 {
     /// <summary>
     /// One running copy per user session. Two copies would fight over each gun's USB
-    /// device and over the three TetherScript virtual devices, so the first start
-    /// takes a named mutex and holds it until the process exits; a second start finds
-    /// it taken, sets a named event asking the first copy to show its window, and
-    /// exits.
+    /// device, so the first start takes a named mutex and holds it until the process
+    /// exits; a second start finds it taken, sets a named event asking the first copy
+    /// to show its window, and exits.
     ///
-    /// Both names are <c>Local\</c>, i.e. per user session, because the TetherScript
-    /// devices are per session too: a machine-wide lock would stop a second user's
-    /// own copy for no reason.
+    /// Both names are <c>Local\</c>, i.e. per user session, because the desktop the
+    /// cursor and keys are injected into is per session too: a machine-wide lock would
+    /// stop a second user's own copy for no reason.
     ///
     /// The mutex is owned by the thread that took it, so <see cref="TryAcquire"/> and
     /// <see cref="Dispose"/> must run on the same thread — in practice both run on

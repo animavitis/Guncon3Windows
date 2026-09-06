@@ -4,7 +4,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Threading;
 using Guncon3.Core;
-using Guncon3Console.TetherScript;
+using Guncon3Console.Output;
 
 namespace Guncon3Console
 {
@@ -32,12 +32,6 @@ namespace Guncon3Console
         // are shared rather than exclusive, so two workers evaluating it concurrently can both pick the same
         // free device.
         private static readonly object ReconnectGate = new object();
-
-        /// <summary>The virtual absolute mouse spans the whole virtual desktop, so a screen-relative aim has to
-        /// be offset and scaled onto the calibrated monitor. If the TetherScript driver turns out to map its
-        /// range onto the primary screen only, set this to false and the aim is screen-relative
-        /// again.</summary>
-        private const bool MapToVirtualDesktop = true;
 
         private readonly int _index;
         private readonly string _tag;
@@ -330,11 +324,12 @@ namespace Guncon3Console
             {
                 var (nx, ny) = calibration.MapNormalized(state.ABS_X, state.ABS_Y, snapshot.Mode);
 
-                if (MapToVirtualDesktop)
-                    (nx, ny) = calibration.Screen.ToDesktop(nx, ny, snapshot.Desktop);
+                // SendInput's absolute coordinates span the virtual desktop, so a screen-relative aim is
+                // offset and scaled onto the calibrated monitor first; ToDesktop clamps to 0..1.
+                (nx, ny) = calibration.Screen.ToDesktop(nx, ny, snapshot.Desktop);
 
-                x = (ushort)(short)Math.Round(nx * 32767.0);
-                y = (ushort)(short)Math.Round(ny * 32767.0);
+                x = (ushort)Math.Round(nx * MouseEventFlags.AbsoluteMax);
+                y = (ushort)Math.Round(ny * MouseEventFlags.AbsoluteMax);
             }
             // Off-screen with a calibration: (0, 0). Whether a game wants that is a
             // separate, unsettled question.

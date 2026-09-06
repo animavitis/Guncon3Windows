@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 using System.Threading;
-using Guncon3Console.TetherScript;
+using Guncon3Console.Output;
 
 namespace Guncon3Console
 {
