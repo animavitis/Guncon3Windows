@@ -40,13 +40,17 @@ namespace Guncon3.Core.Tests
                 "Trigger", "A1", "A2", "B1", "B2", "C1", "C2", "AClick", "BClick"
             }, physical);
 
-            // Everything after index 8 is a digitalized stick direction, never a
-            // physical button, and must never be sent as a joystick button.
+            // Everything after index 8 is a digitalized analog axis — the two sticks
+            // and the depth reading — never a physical button, and must never be sent
+            // as a joystick button. New members are appended here and nowhere else:
+            // the feeder's report bits and every saved mapping are indexed by this
+            // enum, so inserting one in the middle would silently remap both.
             var rest = values.Skip(9).Select(v => v.ToString()).ToArray();
             Assert.Equal(new[]
             {
                 "LUp", "LDown", "LLeft", "LRight",
-                "RUp", "RDown", "RLeft", "RRight"
+                "RUp", "RDown", "RLeft", "RRight",
+                "ZLow", "ZHigh"
             }, rest);
         }
 

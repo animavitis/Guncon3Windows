@@ -21,6 +21,44 @@ namespace Guncon3.Core.Tests
         }
 
         [Fact]
+        public void Parse_ReadsTheDepthThreshold()
+        {
+            var parse = SettingsFile.Parse(new[] { "ZThreshold=1234" });
+
+            Assert.Equal(1234, parse.Settings.ZThreshold);
+            Assert.Empty(parse.Diagnostics);
+            Assert.Empty(parse.UnknownLines);
+        }
+
+        [Theory]
+        [InlineData("ZThreshold=nope")]
+        [InlineData("ZThreshold=")]
+        [InlineData("ZThreshold=0")]
+        [InlineData("ZThreshold=-5")]
+        [InlineData("ZThreshold=99999999")]
+        public void Parse_KeepsTheDefaultDepthThresholdAndReportsAnUnusableOne(string line)
+        {
+            var parse = SettingsFile.Parse(new[] { line });
+
+            Assert.Equal(Settings.Default.ZThreshold, parse.Settings.ZThreshold);
+            Assert.Single(parse.Diagnostics);
+
+            // Reported, not kept as an unknown line: the key is known, only its value was not usable.
+            Assert.Empty(parse.UnknownLines);
+        }
+
+        [Fact]
+        public void FormatThenParse_RoundTripsTheDepthThreshold()
+        {
+            var settings = new Settings { StartMinimized = true, LogToFile = true, ZThreshold = 4321 };
+
+            var parse = SettingsFile.Parse(SettingsFile.Format(settings));
+
+            Assert.Equal(settings, parse.Settings);
+            Assert.Empty(parse.Diagnostics);
+        }
+
+        [Fact]
         public void Parse_ReadsBothKeys()
         {
             var parse = SettingsFile.Parse(new[] { "StartMinimized=true", "LogToFile=true" });

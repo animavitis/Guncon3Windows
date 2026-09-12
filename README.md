@@ -94,16 +94,21 @@ exits with code 1; `keys` is never blocked.
 ### The window
 
 **F12** recalibrates every gun, **R** reloads the mapping files, **H** toggles the
-linear and projective mapping. The toolbar, the tray menu and those keys do the same;
-the keys need the window focused. The mode is not remembered across runs.
+linear and projective mapping. The **Gun** menu, the tray menu and those keys do the same;
+the keys need the window focused. The Gun menu also shows which of the two mappings is
+live and lets you pick either one directly. The mode is not remembered across runs.
 
-- **Status** — device, connection, which calibration, and whether each virtual device still accepts reports.
-- **Log** — everything the app says, warnings amber, errors red, with Clear and Copy all.
+- **Status** — device, connection, which calibration, and whether each virtual device
+  still accepts reports. A gun that is not connected, a missing calibration and a feeder
+  that stopped are coloured rather than merely spelled out.
+- **Log** — everything the app says, timestamped, warnings amber, errors red. Right-click
+  for Copy selection, Copy all and Clear.
 - **Test Input** — one gun live: both calibrated aims as crosshairs (grey raw, white
   linear, cyan projective, the live one thicker), every button and stick direction.
 - **Test Output** — what the three virtual devices were last told for that gun, each with
-  its feeder's health. Both Test tabs only watch, refresh about thirty times a second
-  while open, and stop when you leave them.
+  its feeder's health: where the cursor was put on the desktop, which keys are held, and
+  the pad's own sticks, depth and buttons drawn as the gun's are. Both Test tabs only
+  watch, refresh about thirty times a second while open, and stop when you leave them.
 - **Mapping** — edits `mapping*.txt`; see below.
 - **ESC** or the close button hides to the tray; double-clicking the icon brings it back.
   **File → Exit** or the tray's **Exit** releases every held button and ends the process,
@@ -112,9 +117,9 @@ the keys need the window focused. The mode is not remembered across runs.
   and tray menus. Plug one in, press it, and the session carries on. No restart.
 
 **File → Settings…** writes `settings.txt`: start minimised to the tray, run at Windows
-logon (`HKCU\Software\Microsoft\Windows\CurrentVersion\Run`), and write the log to
-`guncon3.log`. It is `key=value`, `#` for comments, keys case-insensitive, unknown keys
-left alone.
+logon (`HKCU\Software\Microsoft\Windows\CurrentVersion\Run`), write the log to
+`guncon3.log`, and the depth threshold the `ZLow` / `ZHigh` mappings split on. It is
+`key=value`, `#` for comments, keys case-insensitive, unknown keys left alone.
 
 `--console` keeps the old behaviour: the log in the console window, **F12** / **R** /
 **H** / **ESC** as console keys while it has focus, **Ctrl+C** and **Ctrl+Break** to
@@ -144,8 +149,15 @@ reported on startup with its line number.
 
 Gun commands are the nine buttons `Trigger`, `A1`, `A2`, `B1`, `B2`, `C1`, `C2`,
 `AClick`, `BClick`, plus the stick directions `LUp` / `LDown` / `LLeft` / `LRight` and
-`RUp` / `RDown` / `RLeft` / `RRight`. Keyboard codes come from `Guncon3Console.exe keys`,
-also in [docs/keycodes.txt](docs/keycodes.txt).
+`RUp` / `RDown` / `RLeft` / `RRight`, and the depth pair `ZLow` / `ZHigh`. Keyboard codes
+come from `Guncon3Console.exe keys`, also in [docs/keycodes.txt](docs/keycodes.txt).
+
+`ZLow` and `ZHigh` are the depth axis digitised the way the sticks are, but around a
+threshold you set rather than a measured centre: nothing can know how far you stand from
+the screen. `ZLow` is held while the reading is below `ZThreshold`, `ZHigh` while it is
+above, and neither inside a dead band either side of it, so a reading that wobbles does
+not chatter a bound key. Read the live value beside the Z bar on the **Test Input** tab
+and set the threshold in **File → Settings…**. Both are unbound out of the box.
 
 Keys are sent by physical position (scan code), so on a non-US layout a label names the US
 key at that position: `a` fires the key that is `q` on AZERTY.

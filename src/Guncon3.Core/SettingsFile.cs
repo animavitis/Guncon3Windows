@@ -20,6 +20,7 @@ namespace Guncon3.Core
     {
         public const string StartMinimizedKey = "StartMinimized";
         public const string LogToFileKey = "LogToFile";
+        public const string ZThresholdKey = "ZThreshold";
 
         private const string HeaderComment = "# GUNCON3 settings. Delete a line to get its default back.";
 
@@ -29,6 +30,7 @@ namespace Guncon3.Core
 
             bool startMinimized = Settings.Default.StartMinimized;
             bool logToFile = Settings.Default.LogToFile;
+            int zThreshold = Settings.Default.ZThreshold;
             var unknown = new List<string>();
             var diagnostics = new List<string>();
 
@@ -61,6 +63,15 @@ namespace Guncon3.Core
                     if (bool.TryParse(value, out bool parsed)) logToFile = parsed;
                     else diagnostics.Add(BadBoolean(lineNo, key, value));
                 }
+                else if (key.Equals(ZThresholdKey, StringComparison.OrdinalIgnoreCase))
+                {
+                    if (int.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out int parsed)
+                        && DepthDigitizer.IsPlausibleThreshold(parsed))
+                        zThreshold = parsed;
+                    else
+                        diagnostics.Add(string.Create(CultureInfo.InvariantCulture,
+                            $"Line {lineNo}: {key} wants a whole number between {DepthDigitizer.MinThreshold} and {DepthDigitizer.MaxThreshold}, not '{value}'."));
+                }
                 else
                 {
                     // A key from a newer version, or one the user added: kept so that saving from an older
@@ -70,12 +81,12 @@ namespace Guncon3.Core
             }
 
             return new SettingsParse(
-                new Settings { StartMinimized = startMinimized, LogToFile = logToFile },
+                new Settings { StartMinimized = startMinimized, LogToFile = logToFile, ZThreshold = zThreshold },
                 unknown,
                 diagnostics);
         }
 
-        /// <summary>The lines to write: a one-line comment, both keys, then any unknown lines a previous <see
+        /// <summary>The lines to write: a one-line comment, every key, then any unknown lines a previous <see
         /// cref="Parse"/> handed back.</summary>
         public static IReadOnlyList<string> Format(Settings settings, IReadOnlyList<string>? unknownLines = null)
         {
@@ -85,7 +96,8 @@ namespace Guncon3.Core
             {
                 HeaderComment,
                 $"{StartMinimizedKey}={Text(settings.StartMinimized)}",
-                $"{LogToFileKey}={Text(settings.LogToFile)}"
+                $"{LogToFileKey}={Text(settings.LogToFile)}",
+                string.Create(CultureInfo.InvariantCulture, $"{ZThresholdKey}={settings.ZThreshold}")
             };
 
             if (unknownLines != null) lines.AddRange(unknownLines);

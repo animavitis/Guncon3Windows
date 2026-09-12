@@ -14,6 +14,11 @@ namespace Guncon3.Core
         /// <summary>Also append every log line to guncon3.log next to the exe.</summary>
         public bool LogToFile { get; init; }
 
+        /// <summary>Where the depth reading splits into the ZLow and ZHigh gun commands, so that Z can be
+        /// bound in mapping.txt. There is nothing to measure here — it depends on how far the player stands
+        /// from the screen — so it is set by hand from the live reading on the Test Input tab.</summary>
+        public int ZThreshold { get; init; } = DepthDigitizer.DefaultThreshold;
+
         public static Settings Default { get; } = new Settings();
     }
 }

@@ -3,6 +3,7 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Drawing;
+using System.Drawing.Drawing2D;
 using System.Globalization;
 using System.Windows.Forms;
 using WinFormsTimer = System.Windows.Forms.Timer;
@@ -41,11 +42,30 @@ namespace Guncon3Console.Ui
 
         protected const int BoxMarginPx = 8;
         protected const float BorderWidth = 1f;
+        protected const int BoxTextPadPx = 6;
+
+        /// <summary>Both tabs draw one dark picture in the same place: the calibrated screen on the input side,
+        /// the virtual desktop on the output one. Both are 4:3.</summary>
+        protected const int AspectW = 4;
+        protected const int AspectH = 3;
+
+        // ---------------------------------------------------------------- sticks
+
+        /// <summary>A pad takes half the panel it is drawn on, but never shrinks past this: below it the point
+        /// and the arrow stop saying anything.</summary>
+        private const int MinPadSizePx = 70;
+
+        private const int PadGapPx = 14;
+        private const int PadTopPx = 16;
+        private const int PointRadiusPx = 4;
+        private const int ArrowLengthPx = 38;
+        private const float ArrowWidth = 2f;
+        private const int PadValuePadPx = 4;
 
         // ------------------------------------------------------------------ bars
 
-        protected const int BarHeightPx = 16;
-        protected const int BarGapPx = 5;
+        private const int BarHeightPx = 16;
+        private const int BarGapPx = 5;
         private const int BarLabelPx = 30;
         private const int BarValuePx = 56;
         private const int BarTextGapPx = 4;
@@ -60,14 +80,19 @@ namespace Guncon3Console.Ui
 
         protected const string NoFrames = "no frames yet";
         protected const string Missing = "—";
+        protected const string LeftStickCaption = "Left stick";
+        protected const string RightStickCaption = "Right stick";
+        protected const string DepthCaption = "Z";
 
         // -------------------------------------------------------------- colours
 
         private static readonly Color TileLitColour = Color.FromArgb(120, 205, 130);
         private static readonly Color TileIdleColour = Color.FromArgb(238, 238, 238);
         private static readonly Color BarBackColour = Color.FromArgb(228, 228, 232);
-        protected static readonly Color BarFillColour = Color.FromArgb(90, 140, 200);
+        private static readonly Color BarFillColour = Color.FromArgb(90, 140, 200);
         private static readonly Color PadBorderColour = Color.FromArgb(150, 150, 158);
+        private static readonly Color PointColour = Color.White;
+        private static readonly Color ScreenBackColour = Color.FromArgb(24, 24, 28);
 
         // ------------------------------------------------------------- controls
 
@@ -81,6 +106,11 @@ namespace Guncon3Console.Ui
         protected readonly Pen PadBorderPen = new Pen(PadBorderColour, BorderWidth);
         private readonly SolidBrush _barBackBrush = new SolidBrush(BarBackColour);
         private readonly SolidBrush _barFillBrush = new SolidBrush(BarFillColour);
+        private readonly Pen _arrowPen = new Pen(BarFillColour, ArrowWidth) { EndCap = LineCap.ArrowAnchor };
+        private readonly SolidBrush _pointBrush = new SolidBrush(PointColour);
+
+        /// <summary>The ground of the 4:3 picture — the aim box on one tab, the cursor box on the other.</summary>
+        protected readonly SolidBrush ScreenBackBrush = new SolidBrush(ScreenBackColour);
         protected readonly Font Mono = new Font(FontFamily.GenericMonospace, 9f);
         protected readonly Font Small = new Font(FontFamily.GenericSansSerif, 8f);
 
@@ -271,6 +301,76 @@ namespace Guncon3Console.Ui
             }
         }
 
+        /// <summary>
+        /// One stick as a pad drawing. <paramref name="X"/> and <paramref name="Y"/> are already on 0..1 —
+        /// whatever the axis's own range was — or null when there is nothing to draw. <paramref name="ArrowX"/>
+        /// and <paramref name="ArrowY"/> are a sign per axis, both zero for no arrow. <paramref name="Values"/>
+        /// is drawn inside the pad, or null for none.
+        /// </summary>
+        protected readonly record struct StickPicture(
+            string Caption, double? X, double? Y, int ArrowX, int ArrowY, string Values);
+
+        /// <summary>The picture both Test tabs draw for a pair of sticks: two square pads side by side, with the
+        /// depth axis on a bar under them. The caller has already put every axis on 0..1, so the gun's 0..255
+        /// and the virtual pad's 0..32767 arrive here the same shape.</summary>
+        protected void PaintSticks(Graphics g, Panel host, in StickPicture left, in StickPicture right,
+                                   double depth, string depthText)
+        {
+            g.SmoothingMode = SmoothingMode.AntiAlias;
+
+            // Square, half the width each, but never so tall that the depth bar falls off the bottom.
+            int size = (host.ClientSize.Width - 2 * BoxMarginPx - PadGapPx) / 2;
+            int room = host.ClientSize.Height - PadTopPx - PadGapPx - BarHeightPx - BarGapPx;
+            if (size > room) size = room;
+            if (size < MinPadSizePx) size = MinPadSizePx;
+
+            var leftBox = new Rectangle(BoxMarginPx, PadTopPx, size, size);
+            var rightBox = new Rectangle(leftBox.Right + PadGapPx, PadTopPx, size, size);
+
+            Pad(g, leftBox, left);
+            Pad(g, rightBox, right);
+
+            var bar = new Rectangle(BoxMarginPx, leftBox.Bottom + PadGapPx,
+                Math.Max(0, host.ClientSize.Width - 2 * BoxMarginPx), BarHeightPx);
+
+            Bar(g, bar, DepthCaption, depth, depthText);
+        }
+
+        /// <summary>
+        /// One stick: the point where the two axes put it and, when the caller passed a
+        /// direction, an arrow from the centre. On the input side that direction comes
+        /// from the frame's button flags — the gun's own digitisation, deadzone and
+        /// measured centres included — so nothing here re-derives it; the virtual pad
+        /// reports no directions and draws none.
+        /// </summary>
+        private void Pad(Graphics g, Rectangle box, in StickPicture stick)
+        {
+            g.DrawString(stick.Caption, Small, SystemBrushes.ControlText, box.X, box.Y - Small.Height);
+            g.DrawRectangle(PadBorderPen, box);
+            g.DrawLine(PadBorderPen, box.X, box.Y + box.Height / 2, box.Right, box.Y + box.Height / 2);
+            g.DrawLine(PadBorderPen, box.X + box.Width / 2, box.Y, box.X + box.Width / 2, box.Bottom);
+
+            if (stick.X == null || stick.Y == null) return;
+
+            Point(g, box, stick.X.Value, stick.Y.Value);
+
+            if (stick.Values != null)
+            {
+                float width = g.MeasureString(stick.Values, Small).Width;
+                g.DrawString(stick.Values, Small, SystemBrushes.ControlText,
+                    box.X + (box.Width - width) / 2f, box.Bottom - Small.Height - PadValuePadPx);
+            }
+
+            if (stick.ArrowX == 0 && stick.ArrowY == 0) return;
+
+            float cx = box.X + box.Width / 2f;
+            float cy = box.Y + box.Height / 2f;
+            double length = Math.Sqrt(stick.ArrowX * stick.ArrowX + stick.ArrowY * stick.ArrowY);
+            g.DrawLine(_arrowPen, cx, cy,
+                cx + (float)(stick.ArrowX / length * ArrowLengthPx),
+                cy + (float)(stick.ArrowY / length * ArrowLengthPx));
+        }
+
         /// <summary>One labelled bar: the gun's Z on the input side, a virtual pad axis on the output one.</summary>
         protected void Bar(Graphics g, Rectangle area, string label, double fraction, string value)
         {
@@ -291,6 +391,38 @@ namespace Guncon3Console.Ui
 
         protected static double Clamp01(double v) => v < 0 ? 0 : v > 1 ? 1 : v;
 
+        /// <summary>The largest 4:3 box that fits, centred: the picture is a screen, not the panel.</summary>
+        protected static Rectangle BoxIn(Rectangle client)
+        {
+            int w = client.Width - 2 * BoxMarginPx;
+            int h = client.Height - 2 * BoxMarginPx;
+            if (w <= 0 || h <= 0) return Rectangle.Empty;
+
+            if (w * AspectH > h * AspectW) w = h * AspectW / AspectH;
+            else h = w * AspectH / AspectW;
+
+            return new Rectangle(client.X + (client.Width - w) / 2, client.Y + (client.Height - h) / 2, w, h);
+        }
+
+        /// <summary>One line in the middle of a box: what a picture says when it has nothing to draw. Each tab
+        /// says it once, in its own picture, rather than in every label at once.</summary>
+        protected void CentreText(Graphics g, Rectangle box, string text, Brush brush)
+        {
+            var size = g.MeasureString(text, Small);
+            g.DrawString(text, Small, brush,
+                box.X + (box.Width - size.Width) / 2f, box.Y + (box.Height - size.Height) / 2f);
+        }
+
+        /// <summary>The white dot both pictures use for a point on 0..1 in each axis.</summary>
+        protected void Point(Graphics g, Rectangle box, double x, double y)
+        {
+            float px = box.X + (float)(Clamp01(x) * box.Width);
+            float py = box.Y + (float)(Clamp01(y) * box.Height);
+
+            g.FillEllipse(_pointBrush, px - PointRadiusPx, py - PointRadiusPx, PointRadiusPx * 2, PointRadiusPx * 2);
+            g.DrawEllipse(PadBorderPen, px - PointRadiusPx, py - PointRadiusPx, PointRadiusPx * 2, PointRadiusPx * 2);
+        }
+
         // -------------------------------------------------------------------- pieces
 
         protected static Color Lit(bool on) => on ? TileLitColour : TileIdleColour;
@@ -299,6 +431,9 @@ namespace Guncon3Console.Ui
         {
             Text = text,
             AutoSize = false,
+            // Without this a tile too narrow for its caption cuts it mid-word — "Trigg", "AClic" — with nothing
+            // to say it did.
+            AutoEllipsis = true,
             Width = TileWidthPx,
             Height = TileHeightPx,
             TextAlign = ContentAlignment.MiddleCenter,
@@ -338,6 +473,9 @@ namespace Guncon3Console.Ui
             PadBorderPen.Dispose();
             _barBackBrush.Dispose();
             _barFillBrush.Dispose();
+            _arrowPen.Dispose();
+            _pointBrush.Dispose();
+            ScreenBackBrush.Dispose();
             Mono.Dispose();
             Small.Dispose();
         }
